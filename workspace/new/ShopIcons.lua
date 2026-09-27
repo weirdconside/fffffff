@@ -1,0 +1,196 @@
+-- Small 3D glyphs for Admin Vault cards and the title logo. Everything is built
+-- from Roblox primitives inside a ViewportFrame, so no image uploads are needed.
+local Icons={}
+local GOLD=Color3.fromRGB(255,204,58)
+local GOLD_D=Color3.fromRGB(214,150,24)
+local INK=Color3.fromRGB(34,27,20)
+local WOOD=Color3.fromRGB(170,112,64)
+local WOOD_D=Color3.fromRGB(116,72,40)
+local WHITE=Color3.fromRGB(250,250,244)
+local function part(parent,size,cf,colour,shape,material,class)
+    local p=Instance.new(class or 'Part');p.Anchored=true;p.CanCollide=false;p.CanQuery=false;p.CanTouch=false;p.CastShadow=false
+    p.Size=size;p.CFrame=cf;p.Color=colour;p.Material=material or Enum.Material.SmoothPlastic
+    if shape and p:IsA('Part') then p.Shape=shape end
+    p.TopSurface=Enum.SurfaceType.Smooth;p.BottomSurface=Enum.SurfaceType.Smooth;p.Parent=parent;return p
+end
+local BALL,CYL=Enum.PartType.Ball,Enum.PartType.Cylinder
+local up=CFrame.Angles(0,0,math.pi/2) -- turns an X-axis cylinder upright
+local function crown(m,scale)
+    scale=scale or 1
+    local n=12;local r=.8*scale
+    local gold2=Color3.fromRGB(255,222,110)
+    -- red velvet cap with a gold cross on top
+    part(m,Vector3.new(1.35,.9,1.35)*scale,CFrame.new(0,.12*scale,0),Color3.fromRGB(160,28,44),BALL,Enum.Material.Fabric)
+    part(m,Vector3.new(.1,.42,.1)*scale,CFrame.new(0,.78*scale,0),GOLD)
+    part(m,Vector3.new(.3,.1,.1)*scale,CFrame.new(0,.84*scale,0),GOLD)
+    part(m,Vector3.new(.14,.14,.14)*scale,CFrame.new(0,.62*scale,0),WHITE,BALL)
+    for k=0,n-1 do
+        local a=k/n*math.pi*2
+        part(m,Vector3.new(.46,.5,.16)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,-.05*scale,r),GOLD)
+        -- bright rims top and bottom
+        part(m,Vector3.new(.46,.08,.2)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,.21*scale,r),gold2)
+        part(m,Vector3.new(.46,.08,.2)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,-.31*scale,r),gold2)
+    end
+    for k=0,5 do
+        local a=k/6*math.pi*2
+        part(m,Vector3.new(.3,.3,.18)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,.38*scale,r)*CFrame.Angles(0,0,math.pi/4),GOLD)
+        part(m,Vector3.new(.2,.2,.2)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,.64*scale,r),WHITE,BALL)
+        local gem=({Color3.fromRGB(255,60,70),Color3.fromRGB(70,160,255),Color3.fromRGB(80,220,110),Color3.fromRGB(190,90,255),Color3.fromRGB(255,150,40),Color3.fromRGB(60,230,230)})[k+1]
+        part(m,Vector3.new(.24,.24,.24)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,-.05*scale,r+.09*scale),gem,BALL,Enum.Material.Neon)
+        part(m,Vector3.new(.1,.1,.1)*scale,CFrame.Angles(0,a+math.pi/6,0)*CFrame.new(0,-.05*scale,r+.09*scale),WHITE,BALL)
+    end
+end
+local function coin(m,cf,size)
+    part(m,Vector3.new(.2*size,1.3*size,1.3*size),cf*CFrame.Angles(0,0,0),GOLD,CYL)
+    part(m,Vector3.new(.22*size,.95*size,.95*size),cf,GOLD_D,CYL)
+    part(m,Vector3.new(.24*size,.3*size,.3*size),cf*CFrame.new(0,0,0),WHITE,BALL)
+end
+local function heart(m,cf,s,colour)
+    colour=colour or Color3.fromRGB(255,80,120)
+    part(m,Vector3.new(.75,.75,.55)*s,cf*CFrame.new(-.26*s,.18*s,0),colour,BALL)
+    part(m,Vector3.new(.75,.75,.55)*s,cf*CFrame.new(.26*s,.18*s,0),colour,BALL)
+    part(m,Vector3.new(.72,.72,.5)*s,cf*CFrame.new(0,-.14*s,0)*CFrame.Angles(0,0,math.pi/4),colour)
+end
+local function crate(m,cf,s)
+    part(m,Vector3.new(1.4,1.4,1.4)*s,cf,WOOD,nil,Enum.Material.WoodPlanks)
+    for _,e in ipairs({{1,1},{1,-1},{-1,1},{-1,-1}}) do
+        part(m,Vector3.new(1.46,.16,.16)*s,cf*CFrame.new(0,e[1]*.66*s,e[2]*.66*s),WOOD_D)
+        part(m,Vector3.new(.16,1.46,.16)*s,cf*CFrame.new(e[1]*.66*s,0,e[2]*.66*s),WOOD_D)
+        part(m,Vector3.new(.16,.16,1.46)*s,cf*CFrame.new(e[1]*.66*s,e[2]*.66*s,0),WOOD_D)
+    end
+end
+local BUILD={}
+function BUILD.Crown(m) crown(m,1.15) end
+function BUILD.Dice(m)
+    local purple=Color3.fromRGB(147,72,213)
+    part(m,Vector3.new(1.35,1.35,1.35),CFrame.Angles(.35,.6,0),purple)
+    local base=CFrame.Angles(.35,.6,0)
+    local pip=function(cf) part(m,Vector3.new(.24,.24,.24),base*cf,WHITE,BALL) end
+    pip(CFrame.new(0,.62,0))                                   -- top: 1
+    pip(CFrame.new(-.3,.3,.62));pip(CFrame.new(.3,-.3,.62))    -- front: 2
+    for _,y in ipairs({-.3,0,.3}) do pip(CFrame.new(.62,y,-y)) end -- side: 3
+end
+function BUILD.Veto(m)
+    part(m,Vector3.new(.3,1.8,1.8),up*CFrame.Angles(math.pi/2,0,0),Color3.fromRGB(226,35,31),CYL)
+    part(m,Vector3.new(.35,1.4,1.4),up*CFrame.Angles(math.pi/2,0,0),WHITE,CYL)
+    part(m,Vector3.new(.4,1.15,1.15),up*CFrame.Angles(math.pi/2,0,0),Color3.fromRGB(226,35,31),CYL)
+    part(m,Vector3.new(1.1,.3,.5),CFrame.Angles(0,0,math.pi/4),WHITE)
+    part(m,Vector3.new(1.1,.3,.5),CFrame.Angles(0,0,-math.pi/4),WHITE)
+end
+function BUILD.Hourglass(m)
+    local blue=Color3.fromRGB(52,158,216)
+    part(m,Vector3.new(.2,1.3,1.3),CFrame.new(0,.85,0)*up,WOOD_D,CYL)
+    part(m,Vector3.new(.2,1.3,1.3),CFrame.new(0,-.85,0)*up,WOOD_D,CYL)
+    for _,x in ipairs({-.55,.55}) do part(m,Vector3.new(.14,1.6,.14),CFrame.new(x,0,0),WOOD_D) end
+    part(m,Vector3.new(.7,.9,.9),CFrame.new(0,.38,0)*up,Color3.fromRGB(200,235,255),CYL,Enum.Material.Glass).Transparency=.35
+    part(m,Vector3.new(.7,.9,.9),CFrame.new(0,-.38,0)*up,Color3.fromRGB(200,235,255),CYL,Enum.Material.Glass).Transparency=.35
+    part(m,Vector3.new(.35,.7,.7),CFrame.new(0,-.55,0)*up,GOLD,CYL)
+    part(m,Vector3.new(.2,.45,.45),CFrame.new(0,.25,0)*up,GOLD,CYL)
+    part(m,Vector3.new(.08,.5,.08),CFrame.new(0,-.05,0),GOLD)
+    part(m,Vector3.new(.18,.18,.18),CFrame.new(.7,.75,0),blue,BALL,Enum.Material.Neon)
+end
+function BUILD.Hammer(m)
+    local base=CFrame.Angles(0,0,-.55)
+    part(m,Vector3.new(2,.24,.24),base*CFrame.new(0,0,0),WOOD,CYL)
+    part(m,Vector3.new(.55,.8,.55),base*CFrame.new(.9,0,0),Color3.fromRGB(140,146,160))
+    part(m,Vector3.new(.6,.25,.6),base*CFrame.new(.9,.42,0),Color3.fromRGB(96,101,116))
+    part(m,Vector3.new(.3,.3,.3),base*CFrame.new(-.95,0,0),Color3.fromRGB(64,192,29),BALL)
+end
+function BUILD.Crate(m) crate(m,CFrame.Angles(0,.5,0),1) end
+function BUILD.Token(m)
+    local face=CFrame.Angles(0,math.pi/2+.35,0)
+    coin(m,face,1.25)
+    -- an embossed eight-point star on the side that faces the camera
+    for _,a in ipairs({0,math.pi/4}) do part(m,Vector3.new(.08,.5,.5),face*CFrame.new(-.14,0,0)*CFrame.Angles(a,0,0),WHITE) end
+end
+function BUILD.Tokens(m)
+    coin(m,CFrame.new(-.35,-.25,-.3)*CFrame.Angles(0,math.pi/2+.2,0),1)
+    coin(m,CFrame.new(.35,-.05,-.1)*CFrame.Angles(0,math.pi/2+.5,0),1)
+    coin(m,CFrame.new(0,.35,.3)*CFrame.Angles(0,math.pi/2+.35,0),1)
+end
+function BUILD.Drop(m)
+    crate(m,CFrame.new(0,-.55,0)*CFrame.Angles(0,.5,0),.62)
+    local chute=part(m,Vector3.new(1.9,1.1,1.9),CFrame.new(0,.75,0),Color3.fromRGB(64,192,29),BALL)
+    part(m,Vector3.new(2,.6,2),CFrame.new(0,.35,0),Color3.fromRGB(64,192,29)).Transparency=1
+    for _,x in ipairs({-.75,.75}) do part(m,Vector3.new(.05,1.05,.05),CFrame.new(x*.8,.0,0)*CFrame.Angles(0,0,-x*.35),WHITE) end
+end
+function BUILD.Heart(m) heart(m,CFrame.new(),1.6) end
+function BUILD.Hearts(m) heart(m,CFrame.new(-.25,-.1,0),1.4);heart(m,CFrame.new(.55,.55,-.3),.8,Color3.fromRGB(255,150,190)) end
+function BUILD.Chest(m)
+    part(m,Vector3.new(1.8,.9,1.1),CFrame.new(0,-.35,0),WOOD,nil,Enum.Material.WoodPlanks)
+    part(m,Vector3.new(1.85,.45,1.15),CFrame.new(0,.33,0),WOOD_D,nil,Enum.Material.WoodPlanks)
+    part(m,Vector3.new(.25,1.35,1.2),CFrame.new(0,-.12,0),GOLD)
+    for i=1,5 do part(m,Vector3.new(.08,.35,.35),CFrame.new(-.6+i*.22,.65+(i%2)*.1,.1)*CFrame.Angles(0,math.pi/2,.3*i)*up,GOLD,CYL) end
+end
+-- Admin ticket: chunky gold card, cream panel with a red star, purple stub behind a perforation,
+-- the same on both sides so it reads well while it spins.
+local function ticket(m,cf,s)
+    local body=Color3.fromRGB(255,184,36);local rim=Color3.fromRGB(255,228,120);local cream=Color3.fromRGB(255,244,206)
+    local stub=Color3.fromRGB(147,72,213);local red=Color3.fromRGB(226,44,48)
+    part(m,Vector3.new(2.3,1.15,.18)*s,cf,body)
+    for _,side in ipairs({1,-1}) do
+        local z=side*.1*s
+        -- raised rim
+        part(m,Vector3.new(2.3,.09,.04)*s,cf*CFrame.new(0,.53*s,z),rim)
+        part(m,Vector3.new(2.3,.09,.04)*s,cf*CFrame.new(0,-.53*s,z),rim)
+        part(m,Vector3.new(.09,1.15,.04)*s,cf*CFrame.new(1.1*s,0,z),rim)
+        part(m,Vector3.new(.09,1.15,.04)*s,cf*CFrame.new(-1.1*s,0,z),rim)
+        -- cream panel with the red star
+        part(m,Vector3.new(1.38,.8,.03)*s,cf*CFrame.new(-.3*s,0,z),cream)
+        for _,a in ipairs({0,math.pi/4}) do part(m,Vector3.new(.46,.46,.05)*s,cf*CFrame.new(-.3*s,0,z*1.05)*CFrame.Angles(0,0,a),red) end
+        part(m,Vector3.new(.06,.2,.2)*s,cf*CFrame.new(-.3*s,0,z*1.12)*CFrame.Angles(0,math.pi/2,0),Color3.fromRGB(255,214,74),CYL)
+        -- little corner stars
+        for _,c in ipairs({{-.88,.26},{.28,-.26}}) do
+            part(m,Vector3.new(.12,.12,.04)*s,cf*CFrame.new(c[1]*s,c[2]*s,z*1.03)*CFrame.Angles(0,0,math.pi/4),red)
+        end
+        -- purple stub + perforation
+        part(m,Vector3.new(.52,.9,.03)*s,cf*CFrame.new(.74*s,0,z),stub)
+        for i=-3,3 do part(m,Vector3.new(.06,.06,.05)*s,cf*CFrame.new(.43*s,i*.13*s,z*1.02),cream,BALL) end
+        part(m,Vector3.new(.2,.2,.04)*s,cf*CFrame.new(.74*s,0,z*1.05)*CFrame.Angles(0,0,math.pi/4),Color3.fromRGB(255,214,74))
+    end
+end
+function BUILD.Ticket(m,options)
+    local n=math.clamp(math.floor((options and options.count or 1)),1,20)
+    local shown=n>=20 and 6 or n>=10 and 5 or n>=7 and 4 or n>=3 and 3 or 1
+    for i=1,shown do
+        local k=i-(shown+1)/2
+        ticket(m,CFrame.new(k*.12,k*.05,-i*.03)*CFrame.Angles(0,-.35,k*.22),shown>1 and .82 or 1)
+    end
+end
+function BUILD.Gavel(m)
+    local wood=Color3.fromRGB(150,86,44);local dark=Color3.fromRGB(96,52,26)
+    local tilt=CFrame.Angles(0,.3,-.6)
+    part(m,Vector3.new(2.1,.22,.22),tilt*CFrame.new(-.2,0,0),wood,CYL)
+    part(m,Vector3.new(.18,.3,.3),tilt*CFrame.new(-1.25,0,0),GOLD,CYL)
+    part(m,Vector3.new(.12,.26,.26),tilt*CFrame.new(.2,0,0),GOLD,CYL)
+    part(m,Vector3.new(1.3,.72,.72),tilt*CFrame.new(.85,0,0)*CFrame.Angles(0,math.pi/2,0),dark,CYL)
+    for _,z in ipairs({-.45,.45}) do part(m,Vector3.new(.14,.78,.78),tilt*CFrame.new(.85,0,z)*CFrame.Angles(0,math.pi/2,0),GOLD,CYL) end
+    part(m,Vector3.new(1.3,.22,.9),CFrame.new(.1,-.95,.2),dark)
+    part(m,Vector3.new(1.1,.08,.7),CFrame.new(.1,-.82,.2),GOLD)
+end
+function BUILD.Shop(m)
+    crown(m,1.25)
+end
+function Icons.build(parent,kind,options)
+    options=options or {}
+    local view=Instance.new('ViewportFrame');view.Name='Icon3D';view.BackgroundTransparency=1;view.BorderSizePixel=0
+    view.Size=options.size or UDim2.fromScale(1,1);view.Position=options.position or UDim2.fromScale(.5,.5);view.AnchorPoint=Vector2.new(.5,.5)
+    view.Ambient=Color3.fromRGB(200,196,190);view.LightColor=Color3.fromRGB(255,246,229);view.LightDirection=Vector3.new(-1,-2,-2.5)
+    view.ZIndex=options.zindex or 5
+    local world=Instance.new('WorldModel');world.Name='Geometry';world.Parent=view
+    local model=Instance.new('Model');model.Name='Glyph';model.Parent=world
+    local builder=BUILD[kind] or BUILD.Crown
+    builder(model,options)
+    local camera=Instance.new('Camera');camera.FieldOfView=options.fov or 32
+    camera.CFrame=CFrame.lookAt(Vector3.new(2.4,1.7,4.4)*(options.distance or 1),Vector3.new(0,0,0));camera.Parent=view;view.CurrentCamera=camera
+    model.WorldPivot=CFrame.new()
+    view.Parent=parent
+    return view,model
+end
+-- Gentle idle motion shared by every visible icon.
+function Icons.spin(model,clock,seed,amount)
+    if not model or not model.Parent then return end
+    local t=clock+(seed or 0)
+    model:PivotTo(CFrame.new(0,math.sin(t*1.7)*.06,0)*CFrame.Angles(0,math.sin(t*.9)*(amount or .45),math.sin(t*1.3)*.05))
+end
+return Icons
