@@ -96,7 +96,9 @@ function World.create(data,roomId,token,group,runtime)
             local top=ocean:FindFirstChild("OceanTop",true)
             if top and top:IsA("BasePart") then top:SetAttribute("RoundWater",true);top:SetAttribute("RoundWaterSurface",true) end
         end
-        env:PivotTo(CFrame.new(6000,0,roomId*6000));env.Parent=m;w.environment=env
+        -- slot grid (4 per row, 3000 studs apart) keeps every running round far from the lobby and from each other
+        local slot=math.max(1,math.floor(tonumber(roomId) or 1))
+        env:PivotTo(CFrame.new(6000+((slot-1)%4)*3000,0,6000+math.floor((slot-1)/4)*3000));env.Parent=m;w.environment=env
         local markers=assert(env:FindFirstChild("PlotLocations"),"Original PlotLocations missing")
         local slots=#group==3 and {"1","3","5"} or {"1","4","2","5","3","6"}
         for _,p in ipairs(markers:GetChildren()) do if p:IsA("BasePart") then p.Transparency=1;p.CanCollide=false;p.CanQuery=false end end

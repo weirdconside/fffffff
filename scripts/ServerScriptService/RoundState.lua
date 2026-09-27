@@ -677,9 +677,11 @@ local function objectiveTick(s,dt)
             if p then p.baseHP=b.hp;p.baseMaxHP=b.maxHP end
         end
     end
-    local alive=0
-    for _,p in pairs(s.players) do if p.active and not p.defeated then alive=alive+1 end end
+    local alive,last=0,nil
+    for _,p in pairs(s.players) do if p.active and not p.defeated then alive=alive+1;last=p end end
     if alive==0 then s.status="Ended";s.reason="NoPlayers";s.winner=nil;return end
+    -- the last player standing wins (a round with 2+ players never waits for empty islands)
+    if s.pvp and alive==1 and last then s.status="Ended";s.winner=last.id;s.reason="LastStanding";return end
     if s.baseTotal>=2 then
         local uid=s.bases[s.baseOrder[1]].owner
         local p=uid and s.players[uid]

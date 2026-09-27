@@ -17,19 +17,28 @@ local BALL,CYL=Enum.PartType.Ball,Enum.PartType.Cylinder
 local up=CFrame.Angles(0,0,math.pi/2) -- turns an X-axis cylinder upright
 local function crown(m,scale)
     scale=scale or 1
-    local n=10;local r=.78*scale
+    local n=12;local r=.8*scale
+    local gold2=Color3.fromRGB(255,222,110)
+    -- red velvet cap with a gold cross on top
+    part(m,Vector3.new(1.35,.9,1.35)*scale,CFrame.new(0,.12*scale,0),Color3.fromRGB(160,28,44),BALL,Enum.Material.Fabric)
+    part(m,Vector3.new(.1,.42,.1)*scale,CFrame.new(0,.78*scale,0),GOLD)
+    part(m,Vector3.new(.3,.1,.1)*scale,CFrame.new(0,.84*scale,0),GOLD)
+    part(m,Vector3.new(.14,.14,.14)*scale,CFrame.new(0,.62*scale,0),WHITE,BALL)
     for k=0,n-1 do
         local a=k/n*math.pi*2
-        part(m,Vector3.new(.52,.5,.16)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,-.05*scale,r),GOLD)
+        part(m,Vector3.new(.46,.5,.16)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,-.05*scale,r),GOLD)
+        -- bright rims top and bottom
+        part(m,Vector3.new(.46,.08,.2)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,.21*scale,r),gold2)
+        part(m,Vector3.new(.46,.08,.2)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,-.31*scale,r),gold2)
     end
-    for k=0,4 do
-        local a=k/5*math.pi*2
-        part(m,Vector3.new(.3,.3,.3)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,.38*scale,r)*CFrame.Angles(0,0,math.pi/4),GOLD)
-        part(m,Vector3.new(.2,.2,.2)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,.66*scale,r),WHITE,BALL)
-        local gem=({Color3.fromRGB(255,60,70),Color3.fromRGB(70,160,255),Color3.fromRGB(80,220,110),Color3.fromRGB(190,90,255),Color3.fromRGB(255,150,40)})[k+1]
-        part(m,Vector3.new(.22,.22,.22)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,-.05*scale,r+.08*scale),gem,BALL,Enum.Material.Neon)
+    for k=0,5 do
+        local a=k/6*math.pi*2
+        part(m,Vector3.new(.3,.3,.18)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,.38*scale,r)*CFrame.Angles(0,0,math.pi/4),GOLD)
+        part(m,Vector3.new(.2,.2,.2)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,.64*scale,r),WHITE,BALL)
+        local gem=({Color3.fromRGB(255,60,70),Color3.fromRGB(70,160,255),Color3.fromRGB(80,220,110),Color3.fromRGB(190,90,255),Color3.fromRGB(255,150,40),Color3.fromRGB(60,230,230)})[k+1]
+        part(m,Vector3.new(.24,.24,.24)*scale,CFrame.Angles(0,a,0)*CFrame.new(0,-.05*scale,r+.09*scale),gem,BALL,Enum.Material.Neon)
+        part(m,Vector3.new(.1,.1,.1)*scale,CFrame.Angles(0,a+math.pi/6,0)*CFrame.new(0,-.05*scale,r+.09*scale),WHITE,BALL)
     end
-    part(m,Vector3.new(.12,1.3,1.3)*scale,CFrame.new(0,-.28*scale,0)*up,Color3.fromRGB(150,30,40),CYL,Enum.Material.Fabric)
 end
 local function coin(m,cf,size)
     part(m,Vector3.new(.2*size,1.3*size,1.3*size),cf*CFrame.Angles(0,0,0),GOLD,CYL)
@@ -113,14 +122,32 @@ function BUILD.Chest(m)
     part(m,Vector3.new(.25,1.35,1.2),CFrame.new(0,-.12,0),GOLD)
     for i=1,5 do part(m,Vector3.new(.08,.35,.35),CFrame.new(-.6+i*.22,.65+(i%2)*.1,.1)*CFrame.Angles(0,math.pi/2,.3*i)*up,GOLD,CYL) end
 end
+-- Admin ticket: chunky gold card, cream panel with a red star, purple stub behind a perforation,
+-- the same on both sides so it reads well while it spins.
 local function ticket(m,cf,s)
-    local base=Color3.fromRGB(255,206,64)
-    part(m,Vector3.new(2.1,1.05,.08)*s,cf,base)
-    part(m,Vector3.new(1.9,.85,.1)*s,cf,Color3.fromRGB(255,232,140))
-    part(m,Vector3.new(1.7,.65,.11)*s,cf,base)
-    for _,x in ipairs({-1.05,1.05}) do part(m,Vector3.new(.3,.3,.14)*s,cf*CFrame.new(x*s,0,0),Color3.fromRGB(60,40,20),BALL) end
-    for i=-2,2 do part(m,Vector3.new(.05,.05,.12)*s,cf*CFrame.new(.55*s,i*.14*s,0),WHITE,BALL) end
-    for _,a in ipairs({0,math.pi/4}) do part(m,Vector3.new(.34,.34,.13)*s,cf*CFrame.new(-.2*s,0,0)*CFrame.Angles(0,0,a),Color3.fromRGB(226,52,48)) end
+    local body=Color3.fromRGB(255,184,36);local rim=Color3.fromRGB(255,228,120);local cream=Color3.fromRGB(255,244,206)
+    local stub=Color3.fromRGB(147,72,213);local red=Color3.fromRGB(226,44,48)
+    part(m,Vector3.new(2.3,1.15,.18)*s,cf,body)
+    for _,side in ipairs({1,-1}) do
+        local z=side*.1*s
+        -- raised rim
+        part(m,Vector3.new(2.3,.09,.04)*s,cf*CFrame.new(0,.53*s,z),rim)
+        part(m,Vector3.new(2.3,.09,.04)*s,cf*CFrame.new(0,-.53*s,z),rim)
+        part(m,Vector3.new(.09,1.15,.04)*s,cf*CFrame.new(1.1*s,0,z),rim)
+        part(m,Vector3.new(.09,1.15,.04)*s,cf*CFrame.new(-1.1*s,0,z),rim)
+        -- cream panel with the red star
+        part(m,Vector3.new(1.38,.8,.03)*s,cf*CFrame.new(-.3*s,0,z),cream)
+        for _,a in ipairs({0,math.pi/4}) do part(m,Vector3.new(.46,.46,.05)*s,cf*CFrame.new(-.3*s,0,z*1.05)*CFrame.Angles(0,0,a),red) end
+        part(m,Vector3.new(.06,.2,.2)*s,cf*CFrame.new(-.3*s,0,z*1.12)*CFrame.Angles(0,math.pi/2,0),Color3.fromRGB(255,214,74),CYL)
+        -- little corner stars
+        for _,c in ipairs({{-.88,.26},{.28,-.26}}) do
+            part(m,Vector3.new(.12,.12,.04)*s,cf*CFrame.new(c[1]*s,c[2]*s,z*1.03)*CFrame.Angles(0,0,math.pi/4),red)
+        end
+        -- purple stub + perforation
+        part(m,Vector3.new(.52,.9,.03)*s,cf*CFrame.new(.74*s,0,z),stub)
+        for i=-3,3 do part(m,Vector3.new(.06,.06,.05)*s,cf*CFrame.new(.43*s,i*.13*s,z*1.02),cream,BALL) end
+        part(m,Vector3.new(.2,.2,.04)*s,cf*CFrame.new(.74*s,0,z*1.05)*CFrame.Angles(0,0,math.pi/4),Color3.fromRGB(255,214,74))
+    end
 end
 function BUILD.Ticket(m,options)
     local n=math.clamp(math.floor((options and options.count or 1)),1,20)
@@ -134,6 +161,8 @@ function BUILD.Gavel(m)
     local wood=Color3.fromRGB(150,86,44);local dark=Color3.fromRGB(96,52,26)
     local tilt=CFrame.Angles(0,.3,-.6)
     part(m,Vector3.new(2.1,.22,.22),tilt*CFrame.new(-.2,0,0),wood,CYL)
+    part(m,Vector3.new(.18,.3,.3),tilt*CFrame.new(-1.25,0,0),GOLD,CYL)
+    part(m,Vector3.new(.12,.26,.26),tilt*CFrame.new(.2,0,0),GOLD,CYL)
     part(m,Vector3.new(1.3,.72,.72),tilt*CFrame.new(.85,0,0)*CFrame.Angles(0,math.pi/2,0),dark,CYL)
     for _,z in ipairs({-.45,.45}) do part(m,Vector3.new(.14,.78,.78),tilt*CFrame.new(.85,0,z)*CFrame.Angles(0,math.pi/2,0),GOLD,CYL) end
     part(m,Vector3.new(1.3,.22,.9),CFrame.new(.1,-.95,.2),dark)

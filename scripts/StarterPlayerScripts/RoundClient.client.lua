@@ -454,6 +454,11 @@ snapshots.OnClientEvent:Connect(function(incoming)
         if incoming.message:find("Ticket used") then UISound.play("success") end
     end
     updateResources(incoming.resources)
+    if incoming.status=="Ended" then
+        local me=tostring(player.UserId)
+        local who=incoming.winner==me and "YOU WIN!" or (incoming.winnerName and (tostring(incoming.winnerName).." WINS!") or "ROUND OVER")
+        showToast(who..(incoming.returnIn and ("  Back to the lobby in "..incoming.returnIn.."s") or ""))
+    end
     adminUI:update(incoming.wish)
     refreshBoosts(incoming)
     baseBadges:update(incoming.bases,incoming.roster)

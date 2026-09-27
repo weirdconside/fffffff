@@ -7,9 +7,14 @@ def wrap(name,path,parent):
     return f'__modules["{name}"]=function()\nlocal script=__inst["{name}"]\n{open(base+"/"+path).read()}\nend\n'
 for n,p in shared.items(): out.append(wrap(n,p,'shared'))
 for n,p in server.items(): out.append(wrap(n,p,'server'))
-out.append('__modules["RoundWorld"]=function() return {create=function() error("world stub") end,sync=function() end,destroy=function() end} end')
+import sys as _sys
+TEST=_sys.argv[1] if len(_sys.argv)>1 else 'srv.lua'
+if TEST=='srv2.lua':
+    out.append(open(base+'/test/fakeworld.lua').read())
+else:
+    out.append('__modules["RoundWorld"]=function() return {create=function() error("world stub") end,sync=function() end,destroy=function() end} end')
 out.append('local __scripts={}')
 for n,p in (('RoundServer','new/RoundServer.server.lua'),('DonationServer','new/DonationServer.server.lua')):
     out.append(f'__scripts["{n}"]=function()\nlocal script=__inst["{n}"]\n{open(base+"/"+p).read()}\nend\n')
-out.append(open(base+'/test/srv.lua').read())
+out.append(open(base+'/test/'+TEST).read())
 open(base+'/test/srvbundle.lua','w').write('\n'.join(out))

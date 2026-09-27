@@ -27,7 +27,9 @@ local runtime=Workspace:FindFirstChild("ArmyRounds")
 if runtime then runtime:ClearAllChildren() else runtime=Instance.new("Folder");runtime.Name="ArmyRounds";runtime.Parent=Workspace end
 local storage=game:GetService("ServerStorage")
 for _,o in ipairs(storage:GetChildren()) do if o.Name:sub(1,11)=="RoundCache_" then o:Destroy() end end
+-- sessions are keyed by their token: a room can start a new round while older ones are still being played
 local rooms,membership,sessions,hidden,limits,addedPlayers={},{},{},{},{},{}
+local slots={}   -- world slot -> session; every running round gets its own place far from the lobby
 local MAX_PLAYERS,COUNTDOWN=6,15
 local LOBBY_WATER_Y=0
 local queueSuppressed,lobbyRate={},{}
@@ -136,10 +138,15 @@ local function leaveQueue(room,player)
     end
 end
 local function free(session)
-    if sessions[session.room.id]~=session then return end
-    sessions[session.room.id]=nil;session.room.busy=false;session.room.deadline=nil;session.room.remaining=nil;session.room.queued={} ;session.room.order={};session.room.host=nil;session.room.capacity=nil
+    if sessions[session.token]~=session then return end
+    sessions[session.token]=nil
+    if session.slot and slots[session.slot]==session then slots[session.slot]=nil end
     if session.world then World.destroy(session.world) end
-    label(session.room,0,COUNTDOWN);sendLobby(session.room)
+end
+-- the cabin is ready for the next group as soon as the previous one has been sent away
+local function resetRoom(room)
+    room.busy=false;room.deadline=nil;room.remaining=nil;room.queued={};room.order={};room.host=nil;room.capacity=nil;room.launching=nil
+    label(room,0,COUNTDOWN);sendLobby(room)
 end
 local function leave(player,teleport)
     local session=membership[player];membership[player]=nil
@@ -150,7 +157,7 @@ local function leave(player,teleport)
     if session then
         session.players[player]=nil
         if session.state then State.remove(session.state,tostring(player.UserId)) end
-        if not next(session.players) then free(session) else label(session.room,playerCount(session.players),"ROUND") end
+        if not next(session.players) then free(session) end
     end
     if teleport then move(player,lobbySpawn.CFrame+Vector3.new(0,4,0)) end
 end
@@ -162,6 +169,7 @@ end
 -- The client needs ~1 s to close the brick curtain; players are only moved
 -- once the screen is covered, so nobody sees the world pop in or out.
 local COVER_SECONDS=1.1
+local RESULT_SECONDS=5   -- the winner is announced for a few seconds, then everyone goes back to the lobby
 local function coveredLeave(session,player)
     session.leaving=session.leaving or {}
     if session.leaving[player] then return end
@@ -176,29 +184,32 @@ local function coveredFinish(session)
     session.finishing=true
     for p in pairs(session.players) do if p.Parent==Players then p:SetAttribute("SceneCover",os.clock()) end end
     task.delay(COVER_SECONDS,function()
-        if sessions[session.room.id]==session then finish(session) end
+        if sessions[session.token]==session then finish(session) end
     end)
 end
 local function send(session,player,message)
     if membership[player]~=session or not session.state then return end
     local snapshot=State.snapshot(session.state,tostring(player.UserId));if not snapshot then return end
     snapshot.token=session.token;snapshot.message=message;snapshot.sequence=session.sequence
-    if session.endedAt then snapshot.returnIn=math.max(0,math.ceil(Data.ResultSeconds-(os.clock()-session.endedAt))) end
+    if session.endedAt then snapshot.returnIn=math.max(0,math.ceil(RESULT_SECONDS-(os.clock()-session.endedAt))) end
     if snapshot.winner then local winner=session.state.players[snapshot.winner];snapshot.winnerName=winner and winner.name or snapshot.winner end
     Snapshot:FireClient(player,snapshot)
 end
 local function launch(room,group,prebusy)
     if room.busy and not prebusy then return end
     room.busy=true;room.deadline=nil;room.remaining=nil
+    local capacity=room.capacity
     local token=HttpService:GenerateGUID(false):gsub("%-","")
-    local session={room=room,token=token,players={},botIds={},sequence=0,defeatedAt={},wishSerial={}};sessions[room.id]=session
+    local slot=1;while slots[slot] do slot=slot+1 end
+    local session={room=room,token=token,slot=slot,players={},botIds={},sequence=0,defeatedAt={},wishSerial={}}
+    sessions[token]=session;slots[slot]=session;room.launching=session
     local humans={}
     for _,p in ipairs(group) do
         if p.Parent==Players then humans[#humans+1]=p;membership[p]=session;session.players[p]=true;p:SetAttribute("ScenePhase","Transferring") end
     end
     -- Solo rooms deliberately receive three ordinary roster slots, not free resources or combat cheats.
     local fullGroup={table.unpack(humans)}
-    if room.capacity==1 then
+    if capacity==1 then
         local need=math.max(0,4-#fullGroup)
         for i=1,need do
             local bot={UserId=-1000000-room.id*10-i,Name="Bot "..i,Skill=0.78,IsBot=true}
@@ -207,7 +218,7 @@ local function launch(room,group,prebusy)
     end
     label(room,#humans,"...");sendLobby(room)
     local ok,err=pcall(function()
-        session.world=World.create(Data,room.id,token,fullGroup,runtime)
+        session.world=World.create(Data,slot,token,fullGroup,runtime)
         local names,bots,colors,perks,tickets={},{},{},{},{}
         for _,rosterPlayer in ipairs(fullGroup) do
             local uid=tostring(rosterPlayer.UserId)
@@ -235,10 +246,10 @@ local function launch(room,group,prebusy)
                 p:SetAttribute("RoundHome",v.home);p:SetAttribute("RoundCenter",session.world.center);p:SetAttribute("RoundBoundsMin",session.world.cameraMin);p:SetAttribute("RoundBoundsMax",session.world.cameraMax);p:SetAttribute("RoundModel",session.world.model.Name);p:SetAttribute("RoundToken",token);p:SetAttribute("ScenePhase","Round");send(session,p,nil)
             else leave(p,true) end
         end
-        if sessions[room.id]==session then label(room,#humans,"ROUND") end
     end)
     if not ok then warn("[ArmyRound] Start failed: "..tostring(err));finish(session)
-    else print("[ArmyRound] Started "..token.." players="..#humans.." bots="..#session.botIds) end
+    else print("[ArmyRound] Started "..token.." players="..#humans.." bots="..#session.botIds.." slot="..slot) end
+    resetRoom(room)
 end
 for index=1,3 do
     local m=assert(pads:FindFirstChild("Teleporter"..index),"Missing native Teleporter")
@@ -373,9 +384,8 @@ RunService.Heartbeat:Connect(function(dt)
     local steps=0
     while simClock>=0.1 and steps<5 do
         simClock=simClock-0.1;steps=steps+1
-        for _,room in ipairs(rooms) do
-            local session=sessions[room.id]
-            if session and session.state then
+        for _,session in pairs(sessions) do
+            if session.state then
                 local ok,err=pcall(function()
                     State.step(session.state,0.1);if session.bots then Bots.step(session.bots,0.1) end
                     for _,job in ipairs(WishRules.pending(session.state)) do
@@ -385,7 +395,7 @@ RunService.Heartbeat:Connect(function(dt)
                         else
                             task.spawn(function()
                                 local filtered=filterPublic(author,job.text)
-                                if sessions[room.id]==session and membership[author]==session then
+                                if sessions[session.token]==session and membership[author]==session then
                                     WishRules.approve(session.state,job.uid,job.eventId,job.phase,filtered)
                                     session.sequence=session.sequence+1
                                     for p in pairs(session.players) do send(session,p,nil) end
@@ -411,7 +421,7 @@ RunService.Heartbeat:Connect(function(dt)
                                     end
                                 end
                             end
-                            if sessions[room.id]==session and session.state then
+                            if sessions[session.token]==session and session.state then
                                 WishRules.resolve(session.state,think.eventId,plan)
                                 session.sequence=session.sequence+1
                                 for p in pairs(session.players) do send(session,p,nil) end
@@ -440,7 +450,7 @@ RunService.Heartbeat:Connect(function(dt)
                     for _,player in ipairs(eliminated) do coveredLeave(session,player) end
                     if session.state.status=="Ended" then
                         if not session.endedAt then session.endedAt=os.clock() end
-                        if os.clock()-session.endedAt>=Data.ResultSeconds then coveredFinish(session) end
+                        if os.clock()-session.endedAt>=RESULT_SECONDS then coveredFinish(session) end
                     end
                 end)
                 if not ok then warn("[ArmyRound] Simulation stopped safely: "..tostring(err));finish(session) end
@@ -473,7 +483,7 @@ RunService.Heartbeat:Connect(function(dt)
                     local suppressed=queueSuppressed[player]
                     -- LEAVE blocks re-entry for two seconds only; walking back in afterwards re-queues.
                     if suppressed and suppressed.room==room.id and now>=suppressed.untilTime then queueSuppressed[player]=nil;suppressed=nil end
-                    if not membership[player] and inside and not (suppressed and suppressed.room==room.id) then candidates[#candidates+1]=player end
+                    if not membership[player] and inside and not (suppressed and suppressed.room==room.id) and player:GetAttribute("ScenePhase")~="Transferring" then candidates[#candidates+1]=player end
                 end
                 local departed,rejected=Queue.reconcile(room,candidates,MAX_PLAYERS)
                 for _,player in ipairs(rejected) do
@@ -498,8 +508,9 @@ RunService.Heartbeat:Connect(function(dt)
                         local launched,crash=pcall(launch,room,group,true)
                         if not launched then
                             warn("[ArmyRound] Launch crashed safely: "..tostring(crash))
-                            local session=sessions[room.id]
-                            if session then pcall(finish,session) else room.busy=false;room.host=nil;room.capacity=nil;room.remaining=nil end
+                            local session=room.launching
+                            if session then pcall(finish,session) end
+                            resetRoom(room)
                             for _,p in ipairs(group) do if p.Parent==Players and not membership[p] then p:SetAttribute("ScenePhase","Lobby") end end
                             label(room,0,COUNTDOWN)
                         end
