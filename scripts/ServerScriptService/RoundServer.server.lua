@@ -310,7 +310,7 @@ Command.OnServerEvent:Connect(function(player,token,op,payload)
     local clean={}
     for _,field in ipairs({"key","kind","mode","prompt","text","eventId","target","enemy","camp","owner","choice"}) do
         if payload[field]~=nil then
-            if type(payload[field])~="string" or #payload[field]>120 then return end
+            if type(payload[field])~="string" or #payload[field]>240 then return end
             clean[field]=payload[field]
         end
     end

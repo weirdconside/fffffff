@@ -11,6 +11,7 @@ SRC = {  # existing script name -> new source file
     'DonationShop': 'new/DonationShop.lua', 'DonationClient': 'new/DonationClient.client.lua', 'LobbyUI': 'new/LobbyUI.lua',
     'AdminUI': 'new/AdminUI.lua', 'RoundClient': 'new/RoundClient.client.lua', 'MusicController': 'new/MusicController.client.lua', 'StudTheme': 'new/StudTheme.lua', 'RoundWorld': 'new/RoundWorld.lua',
     'RoundAnimations': 'new/RoundAnimations.lua', 'SceneEnvironment': 'new/SceneEnvironment.client.lua',
+    'TypingRules': 'new/TypingRules.lua', 'ManualTyping': 'new/ManualTyping.lua',
 }
 tree = etree.parse('orig.rbxlx')
 root = tree.getroot()

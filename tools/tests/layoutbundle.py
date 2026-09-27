@@ -2,7 +2,7 @@ import os, sys
 base=os.path.dirname(os.path.abspath(__file__))+'/..'
 w,h=(int(x) for x in (sys.argv[1] if len(sys.argv)>1 else '1280x720').split('x'))
 mods={'StudTheme':'new/StudTheme.lua','UISound':'new/UISound.lua','ShopIcons':'new/ShopIcons.lua','DonationShop':'new/DonationShop.lua','DonationCatalog':'new/DonationCatalog.lua',
-      'LobbyUI':'new/LobbyUI.lua','AdminUI':'new/AdminUI.lua','ManualTyping':'src/ManualTyping.lua','TypingRules':'src/TypingRules.lua',
+      'LobbyUI':'new/LobbyUI.lua','AdminUI':'new/AdminUI.lua','ManualTyping':'new/ManualTyping.lua','TypingRules':'new/TypingRules.lua',
       'StudTransition':'new/StudTransition.lua','TitleLogo':'new/TitleLogo.lua'}
 extra=sys.argv[2:]   # name=path modules added by later steps
 for e in extra:

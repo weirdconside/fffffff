@@ -90,8 +90,15 @@ function Admin.new(parent,send)
         make('UIGradient',fade,'G',{Rotation=side==0 and 0 or 180,Transparency=NumberSequence.new(.35,1)})
     end
     self.marker=caption(column,'Pointer',30,C.Gold,17);self.marker.Text=utf8.char(0x25BC);self.marker.Visible=false
-    self.manual=Manual.attach(input,function(text)
-        if self.canType and not self.pending then send(self.phase=='Append' and 'AppendDraft' or 'WishDraft',{eventId=self.event,prompt=text}) end
+    -- drafts go out at most ~6 times a second (the latest text always wins); the submit carries the final text
+    local lastSent,queued=0,false
+    local function flush()
+        queued=false;lastSent=os.clock()
+        if self.canType and not self.pending then send(self.phase=='Append' and 'AppendDraft' or 'WishDraft',{eventId=self.event,prompt=self.manual:value()}) end
+    end
+    self.manual=Manual.attach(input,function()
+        if os.clock()-lastSent>=.16 then flush()
+        elseif not queued then queued=true;task.delay(.17,function() if queued then flush() end end) end
     end)
     input.FocusLost:Connect(function(enter) if enter then self:submit() end end)
     input.ReturnPressedFromOnScreenKeyboard:Connect(function() self:submit() end)
@@ -101,7 +108,7 @@ end
 function Admin:submit()
     if not self.gui.Enabled or not self.canType or self.pending then return end
     self.pending=true;self.card.Visible=false;self.hint.Visible=false;self.manual:allow(false)
-    self.send(self.phase=='Append' and 'AppendSubmit' or 'WishSubmit',{eventId=self.event})
+    self.send(self.phase=='Append' and 'AppendSubmit' or 'WishSubmit',{eventId=self.event,prompt=self.manual:value()})
     if self.input:IsFocused() then self.input:ReleaseFocus() end
     UISound.play('success')
     self:layout()
@@ -237,11 +244,12 @@ function Admin:update(wish)
     self:layout()
     self:render()
 end
-function Admin:report(message,serverDraft)
-    if not self.canType or not message then return end
+-- Only input problems are shown here, and what the player typed is never overwritten.
+function Admin:report(message)
+    if not self.canType or type(message)~='string' then return end
+    if not (message:find('input window',1,true) or message:find('too long',1,true) or message:find('prompt',1,true)) then return end
     self.pending=false;self.gui.Enabled=true;self.card.Visible=true;self.manual:allow(true)
     self.error.Text=message;self.error.Visible=true
-    if serverDraft~=nil then self.manual:set(self.manual.prefix,serverDraft) end
     self:layout()
 end
 function Admin:render()

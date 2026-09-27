@@ -8,7 +8,7 @@ do
     local ok=pcall(function() Commands=require(script.Parent.AdminCommands);Actions=require(script.Parent.AdminActions) end)
     if not ok then Commands=require('./AdminCommands.ModuleScript');Actions=require('./AdminActions.ModuleScript') end
 end
-local Rules={Times={Prompt=15,Announcement=3,Roulette=5,Append=10,Applied=5,Filtering=6,Resolving=6,Thinking=9}}
+local Rules={Times={Prompt=15,Announcement=3,Roulette=5,Append=10,Applied=5,Filtering=6,Resolving=6,Thinking=15}}
 Rules.FirstDelay=120     -- seconds into the round before the first admin panel (2 minutes)
 Rules.Interval=120       -- one timer admin panel every 2 minutes (start to start)
 Rules.AdminBonus=.20     -- ADMIN pass: +20% weight in the random pick
@@ -16,7 +16,7 @@ local function copy(v) if type(v)~='table' then return v end;local out={};for k,
 local function keys(t) local a={};for k in pairs(t or {}) do a[#a+1]=tostring(k) end;table.sort(a);return a end
 local function perk(p,name) return p~=nil and type(p.perks)=='table' and p.perks[name]==true end
 function Rules.sanitize(value)
-    return (Typing.clip(value,120):gsub('%s+',' '):match('^%s*(.-)%s*$') or '')
+    return (Typing.clip(value,240):gsub('%s+',' '):match('^%s*(.-)%s*$') or '')
 end
 local function random(w)
     local ok,n=pcall(w.rng);if not ok or type(n)~='number' or n~=n or math.abs(n)==math.huge then n=.5 end
@@ -193,10 +193,12 @@ function Rules.action(s,uid,op,payload)
     local e=s.wish.event
     if op=='WishDraft' or op=='AppendDraft' then
         local text=payload.prompt or payload.text or ''
-        if not Typing.validEdit(e.buffers[uid] or '',text) then return false,'Type the prompt manually; pasting is disabled.' end
+        if not Typing.validEdit(e.buffers[uid] or '',text) then return false,'This text is too long.' end
         e.buffers[uid]=text;return true,nil
     end
-    -- Submit carries no authoritative text: it uses the character-by-character server buffer.
+    -- Submit carries the final text, so a draft that was dropped on the way never loses letters.
+    local final=payload.prompt or payload.text
+    if type(final)=='string' and Typing.validEdit('',final) then e.buffers[uid]=final end
     submit(s,e,uid,e.phase);return true,nil
 end
 function Rules.pending(s)

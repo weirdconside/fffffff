@@ -1,5 +1,5 @@
--- Clipboard shortcuts + bulk edits are rejected in game-owned prompt fields.
--- One validated Unicode code point is sent per edit; submissions cannot replace it.
+-- Admin panel text field: keyboard clipboard shortcuts (Ctrl+V) are blocked, everything else is
+-- accepted, including phone keyboards that insert whole words (autocorrect, suggestions, swipe).
 local UIS=game:GetService('UserInputService')
 local CAS=game:GetService('ContextActionService')
 local Typing=require(script.Parent.TypingRules)
@@ -44,12 +44,11 @@ function Manual.attach(box,onEdit)
         local text=box.Text
         if not self.enabled or os.clock()<self.blockedUntil or text:sub(1,#self.prefix)~=self.prefix then restore();return end
         local nextText=text:sub(#self.prefix+1)
-        local valid,inserted=Typing.validEdit(self.suffix,nextText)
-        if not valid then restore();return end
-        -- Desktop edits adding text need a real key event/held key, not a context-menu paste.
-        local adds=inserted>0
-        local manualKey=os.clock()-self.lastKey<.3 or (self.lastCode and held(self.lastCode))
-        if adds and UIS.KeyboardEnabled and not UIS.TouchEnabled and not manualKey then restore();return end
+        local valid=Typing.validEdit(self.suffix,nextText)
+        if not valid then
+            -- too long or broken text: keep what fits instead of throwing the edit away
+            nextText=Typing.clip(nextText);self.changing=true;box.Text=self.prefix..nextText;self.changing=false
+        end
         if nextText~=self.suffix then self.suffix=nextText;if onEdit then onEdit(nextText) end end
     end)
     self.connections[#self.connections+1]=box:GetPropertyChangedSignal('CursorPosition'):Connect(function()

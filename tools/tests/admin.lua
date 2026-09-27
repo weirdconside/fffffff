@@ -57,4 +57,4 @@ print("5 phase",ev.phase,ev.source,ev.outcome,(tostring(ev.effect):gsub("\n"," /
 ev=runEvent("дай мне 100 золота","Execute",nil,function(t) return (t:gsub("%d","#")) end)
 print("6 shown:",ev.prompt,"| typed:",ev.rawPrompt,"|",ev.effect)
 -- 7) timeout: no answer from the AI within 9 s -> built-in dictionary
-ev=runEvent("метеоры на врагов пожалуйста братан","Execute");print("7 phase",ev.phase);W.thinking(s);step(95);print("  ",ev.phase,ev.source,ev.effect)
+ev=runEvent("метеоры на врагов пожалуйста братан","Execute");print("7 phase",ev.phase);W.thinking(s);step(160);print("  ",ev.phase,ev.source,ev.effect)

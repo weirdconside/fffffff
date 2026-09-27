@@ -147,6 +147,37 @@ local NEGATION=set({'не','ни','нельзя','dont','not','never','no','nobo
 
 local function cyr(s) return s:find('[\128-\255]')~=nil end
 local SUFFIX={'','s','es','ed','d','ing','er','ers','n','ly','y'}
+-- one-typo tolerance, used only by the best-effort parse when Gemini could not answer
+local FUZZY=false
+local function codes(t) local out={};for _,c in utf8.codes(t) do out[#out+1]=c end;return out end
+local function within1(a,b)
+    if math.abs(#a-#b)>1 then return false end
+    local i,j,edits=1,1,0
+    while i<=#a and j<=#b do
+        if a[i]==b[j] then i+=1;j+=1
+        else
+            edits+=1;if edits>1 then return false end
+            if #a>#b then i+=1 elseif #b>#a then j+=1 else i+=1;j+=1 end
+        end
+    end
+    return edits+(#a-i+1)+(#b-j+1)<=1
+end
+-- returns the corrected word when tok is one typo away from stem (Russian stems keep the ending)
+local function fuzzy(tok,stem,prefix)
+    local ok1,s=pcall(codes,stem);local ok2,t=pcall(codes,tok)
+    if not ok1 or not ok2 or #s<4 or #t<3 then return nil end
+    if not prefix then return within1(t,s) and stem or nil end
+    for len=#s-1,#s+1 do
+        if len<=#t and len>0 then
+            local head={};for k=1,len do head[k]=t[k] end
+            if within1(head,s) then
+                local rest={};for k=len+1,#t do rest[#rest+1]=utf8.char(t[k]) end
+                return stem..table.concat(rest)
+            end
+        end
+    end
+    return nil
+end
 local function match(tok,stem)
     if stem:sub(-1)=='*' then local st=stem:sub(1,-2);return tok:sub(1,#st)==st end
     if cyr(stem) then
@@ -208,6 +239,27 @@ local function tokenize(text,players)
         elseif w:match('^[xх]%d+$') then tok.mult=tonumber(w:match('(%d+)$'))
         elseif NUMWORDS[w] then tok.num=NUMWORDS[w] end
         tokens[#tokens+1]=tok
+    end
+    -- best-effort mode (Gemini could not answer): a word one typo away from the dictionary is corrected,
+    -- preferring the longest matching word (метеоы -> метеор, not метел)
+    if FUZZY then
+        for _,tok in ipairs(tokens) do
+            if not tok.name and not tok.num and not tok.mult and not FILLER[tok.t] then
+                local known=false
+                for _,stem in ipairs(KNOWN) do if match(tok.t,stem) then known=true;break end end
+                if not known then
+                    local best,bestLen=nil,0
+                    for _,stem in ipairs(KNOWN) do
+                        if not stem:find('*',1,true) then
+                            local fixed=fuzzy(tok.t,stem,cyr(stem))
+                            local len=utf8.len(stem) or 0
+                            if fixed and len>bestLen then best,bestLen=fixed,len end
+                        end
+                    end
+                    if best then tok.t=best end
+                end
+            end
+        end
     end
     -- a word that is not in the dictionary but starts a player's name is that player
     for _,tok in ipairs(tokens) do
@@ -520,6 +572,13 @@ local function parseClause(ctx,s,raw,filtered,existing)
     return acts,confident,modified
 end
 function Commands.plan(s,e,strict)
+    FUZZY=not strict
+    local ok,plan=pcall(Commands.planWith,s,e,strict)
+    FUZZY=false
+    if not ok then error(plan) end
+    return plan
+end
+function Commands.planWith(s,e,strict)
     local authorName=s.players[e.recipient] and s.players[e.recipient].name or 'Player'
     local base=e.rawPrompt or e.prompt or ''
     local acts,confident=parseClause({speaker=authorName,speakerIsAuthor=true},s,base,e.prompt,nil)

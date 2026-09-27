@@ -1,6 +1,6 @@
 import os
 base=os.path.dirname(os.path.abspath(__file__))+'/..'
-shared={'StudTheme':'new/StudTheme.lua','UISound':'new/UISound.lua','RoundData':'src/RoundData.lua','TypingRules':'src/TypingRules.lua','DonationCatalog':'new/DonationCatalog.lua'}
+shared={'StudTheme':'new/StudTheme.lua','UISound':'new/UISound.lua','RoundData':'src/RoundData.lua','TypingRules':'new/TypingRules.lua','DonationCatalog':'new/DonationCatalog.lua'}
 server={'RoundState':'new/RoundState.lua','RoundBots':'new/RoundBots.lua','LobbyQueue':'src/LobbyQueue.lua','WishRules':'new/WishRules.lua','Perks':'new/Perks.lua','AdminBrain':'new/AdminBrain.lua','AdminCommands':'new/AdminCommands.lua','AdminActions':'new/AdminActions.lua'}
 out=[open(base+'/test/rbxmock.lua').read(),'local __inst={}']
 def wrap(name,path,parent):

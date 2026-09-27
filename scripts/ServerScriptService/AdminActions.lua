@@ -415,11 +415,11 @@ function Actions.execute(s,e,raw)
         end
     end
     if #labels==0 then
-        return false,full and ('Troop limit reached ('..Actions.MaxTroops..' per player).') or 'Nothing could be affected right now.','Rejected'
+        return false,full and ('Troop limit: '..Actions.MaxTroops..' per player. When some of them fall you can summon more.') or 'Nothing could be affected right now.','Rejected'
     end
     e.effectLabels=labels
     local summary=table.concat(labels,' + ')..'!'
-    if full then summary=summary..' (troop limit '..Actions.MaxTroops..')' end
+    if full then summary=summary..' (limit '..Actions.MaxTroops..' troops per player)' end
     return true,plan.caption and (plan.caption..'\n'..summary) or summary,'Executed'
 end
 return Actions

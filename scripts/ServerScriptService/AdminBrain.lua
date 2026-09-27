@@ -123,22 +123,33 @@ function Brain.ask(job)
     local order={}
     if workingModel then order[1]=workingModel end
     for _,m in ipairs(MODELS) do if m~=workingModel then order[#order+1]=m end end
+    local attempts=0
     for _,model in ipairs(order) do
+        attempts+=1
         local cfg=table.clone(config)
         if model:find('2.5',1,true) then cfg.thinkingConfig={thinkingBudget=0} end
         local body=HttpService:JSONEncode({systemInstruction={parts={{text=SYSTEM}}},
             contents={{role='user',parts={{text=HttpService:JSONEncode(input)}}}},generationConfig=cfg})
         local response,err=post(model,body)
-        if not response then warn('[AdminBrain] Request failed: '..tostring(err));return nil end
-        if response.Success then
+        if not response then
+            -- a dropped connection: one more try (next model) before the built-in dictionary takes over
+            warn('[AdminBrain] Request failed: '..tostring(err))
+            if attempts>=2 then return nil end
+            task.wait(.5)
+        elseif response.Success then
             local plan=parse(response)
             if plan then workingModel=model;return plan end
-            warn('[AdminBrain] '..model..' returned an unreadable answer');return nil
+            warn('[AdminBrain] '..model..' returned an unreadable answer')
+            if attempts>=2 then return nil end
         elseif response.StatusCode==404 or (response.StatusCode==400 and not tostring(response.Body):find('API key',1,true)) then
             -- model retired or config not supported: try the next one
             warn('[AdminBrain] '..model..' -> HTTP '..response.StatusCode)
         else
-            warn('[AdminBrain] HTTP '..tostring(response.StatusCode)..' '..tostring(response.Body):sub(1,200));return nil
+            warn('[AdminBrain] HTTP '..tostring(response.StatusCode)..' '..tostring(response.Body):sub(1,200))
+            -- busy / overloaded: try once more; a bad key is not going to fix itself
+            local code=tonumber(response.StatusCode) or 0
+            if attempts>=2 or not (code==429 or code>=500) then return nil end
+            task.wait(1)
         end
     end
     return nil

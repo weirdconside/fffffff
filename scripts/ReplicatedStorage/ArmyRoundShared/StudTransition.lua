@@ -63,8 +63,9 @@ function T.new(parent)
     resultText.Size=UDim2.fromScale(.86,.3);resultText.FontFace=SMALL_FONT;resultText.TextScaled=true;resultText.ZIndex=14;resultText.Parent=resultStage
     local rs=Instance.new('UIStroke');rs.Color=INK;rs.Thickness=7;rs.Parent=resultText
     local rg=Instance.new('UIGradient');rg.Rotation=90;rg.Parent=resultText
-    local shadow=resultText:Clone();shadow.Name='Shadow';shadow.ZIndex=13;shadow.Position=UDim2.new(.5,6,.47,8);shadow.TextColor3=INK;shadow.Parent=resultStage
-    shadow:FindFirstChildOfClass('UIGradient'):Destroy()
+    local shadow=Instance.new('TextLabel');shadow.Name='Shadow';shadow.BackgroundTransparency=1;shadow.AnchorPoint=Vector2.new(.5,.5);shadow.Position=UDim2.new(.5,6,.47,8)
+    shadow.Size=UDim2.fromScale(.86,.3);shadow.FontFace=SMALL_FONT;shadow.TextScaled=true;shadow.ZIndex=13;shadow.TextColor3=INK;shadow.Parent=resultStage
+    local ss=Instance.new('UIStroke');ss.Color=INK;ss.Thickness=7;ss.Parent=shadow
     self.resultStage,self.resultText,self.resultShadow,self.resultGradient=resultStage,resultText,shadow,rg
     self.resultScale=Instance.new('UIScale');self.resultScale.Parent=resultStage
     self.connection=RunService.RenderStepped:Connect(function(dt)
