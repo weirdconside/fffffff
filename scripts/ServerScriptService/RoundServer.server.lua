@@ -398,10 +398,13 @@ RunService.Heartbeat:Connect(function(dt)
                     if think then
                         task.spawn(function()
                             local plan=Brain.ask(think)
-                            if plan and type(plan.caption)=="string" then
+                            if type(plan)=="table" then
                                 local viewer=Players:GetPlayerByUserId(tonumber(think.authorUid) or 0)
                                 if not viewer or membership[viewer]~=session then viewer=next(session.players) end
-                                plan.caption=viewer and filterPublic(viewer,plan.caption) or nil
+                                -- AI text is shown to everyone, so it goes through the same filter as player text
+                                for _,key in ipairs({"caption","reason"}) do
+                                    if type(plan[key])=="string" then plan[key]=viewer and filterPublic(viewer,plan[key]) or nil end
+                                end
                             end
                             if sessions[room.id]==session and session.state then
                                 WishRules.resolve(session.state,think.eventId,plan)

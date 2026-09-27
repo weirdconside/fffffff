@@ -16,15 +16,16 @@ Every 2 minutes one player (the author) types ANY command. Sometimes a roulette 
 player append their own text to it ("additions"). You turn the final command into game actions.
 
 Rules:
-- ALWAYS do something that matches the spirit of the command as closely as the actions allow.
-  Never refuse because the exact thing does not exist: pick the closest fun combination
-  (e.g. "turn them into chickens" -> freeze + damage_troops; "I am the king" -> give Gold + shield + boost_army;
-  "tsunami" -> damage_troops on everyone; "make me win" -> damage_base on enemies + boost_army).
-- Additions modify the command: merge them all, in order. They can redirect the target ("but it hits the author"),
+- Execute the command if it can be done with the actions below (any wording, any language, typos are fine;
+  obvious equivalents count: "nuke them" = damage_troops, "make me rich" = give Gold, "stop them" = freeze).
+- If the command does not fit the game's actions (it asks for something the game has no action for, e.g.
+  "turn everyone into chickens", "give me admin", "change the sky colour") or is sexual, hateful or real-world
+  harmful: set refused=true, actions=[], and a short reason. Do not invent a substitute effect.
+- Additions modify the command, in order. They can redirect the target ("but it hits the author"),
   weaken or strengthen it ("half strength", "x10"), add new effects, or cancel it ("cancel", "nothing happens").
   Set cancelled=true only if an addition clearly cancels the whole command.
-- Set refused=true ONLY for sexual, hateful or real-world harmful content. Silly, violent-cartoon or rude-but-harmless
-  game commands are fine.
+- If a single addition does not fit the game's actions, ignore only that addition and put its player's name in
+  rejected_additions. The command and the other additions still run.
 - target: "author", "enemies" (everyone except the author), "everyone", "random_enemy", or an exact player name
   from the players list. For "attack", target is whose army attacks and victim is the player being attacked.
 - Numbers: count 1-15 (summon), amount (give; Gold up to 150, Log up to 1200, Stone up to 800, others up to 80-250),
@@ -37,15 +38,16 @@ Rules:
   boost_army (more damage, seconds, power), boost_workers (faster gathering, seconds, power),
   shield (base takes less damage, seconds), instant_build (finish upgrades/training/research now),
   level_up (building, count), buff_troops (permanent bigger HP and damage for current troops, percent), attack (victim).
-- Use 1 to 4 actions. Prefer showy ones (meteors, summons, freeze) when the command is vague.
+- Use 1 to 4 actions.
 - caption: one short hype line (max 70 characters) in the SAME language as the command, describing what happens,
   no swearing, e.g. "Метеоритный дождь накрыл армию Bob!" or "Alice summoned 5 giants!".
+- reason (when refused): one short line in the SAME language as the command, e.g. "В игре нельзя превращать в куриц".
 Reply with JSON only.]]
 local function schema()
     local str={type='STRING'};local int={type='INTEGER'}
     local resources={'Log','Stone','Gold','Plank','Iron Ore','Iron Bar','Crystal','Trophy','all'}
     return {type='OBJECT',properties={
-        caption=str,refused={type='BOOLEAN'},cancelled={type='BOOLEAN'},reason=str,
+        caption=str,refused={type='BOOLEAN'},cancelled={type='BOOLEAN'},reason=str,rejected_additions={type='ARRAY',items=str},
         actions={type='ARRAY',items={type='OBJECT',properties={
             type={type='STRING',enum=ACTIONS},target=str,
             unit={type='STRING',enum={'Barbarian','Archer','Giant','Wizard'}},

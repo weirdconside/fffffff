@@ -63,3 +63,11 @@ print("phase",ev.phase,"choice",ev.choice,"final",ev.finalPrompt)
 local job=W.thinking(s);assert(job and job.command=="meteor on everyone",'job');assert(W.thinking(s)==nil,'job once')
 step(95)
 print("timeout ->",ev.phase,ev.outcome,ev.effect,"fx",fxCount)
+-- strict rules
+e=fresh("turn everyone into chickens");print("chickens:",W.execute(s,e,W.localPlan(s,e)))
+e=fresh("meteor on enemies",{["2"]="and paint the sky pink",["3"]="but half strength"})
+local ok2,msg2=W.execute(s,e,W.localPlan(s,e));print("bad addition:",ok2,msg2,"rejected2",e.rejected and e.rejected["2"],"rejected3",e.rejected and e.rejected["3"])
+e=fresh("meteor on enemies",{["2"]="x"});print("ai reject add:",W.execute(s,e,{caption="Boom",actions={{type="damage_troops",target="enemies"}},rejected_additions={"Bob"}}),e.rejected["2"])
+-- author cannot append
+s.wish.event=nil;local ev2=fresh("meteor");ev2.phase="Append";ev2.deadline=s.elapsed+10
+print("author append allowed:",State.canWish(s,"1","AppendDraft",ev2.id),"other:",State.canWish(s,"2","AppendDraft",ev2.id))

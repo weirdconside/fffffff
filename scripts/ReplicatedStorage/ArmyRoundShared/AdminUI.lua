@@ -120,8 +120,11 @@ function Admin:setLines(quotes,typewriter)
     for i,q in ipairs(quotes) do
         local l=caption(self.lineHolder,'Line'..i,i==1 and LINE_SIZE or LINE_SIZE-6,C.White,12)
         local name=q.name and (q.name..(q.suffix or ': ')) or ''
-        l.Text=(q.name and ('<font color="'..hex(q.color or C.White)..'">'..escape(name)..'</font>') or '')..escape(q.text)
-        self.plain[i]=name..(q.text or '')
+        local body=escape(q.text)
+        -- a rejected addition stays readable but crossed out
+        if q.rejected then body='<font transparency="0.45"><s>'..body..'</s></font> <font color="'..hex(C.Red)..'">REJECTED</font>' end
+        l.Text=(q.name and ('<font color="'..hex(q.color or C.White)..'">'..escape(name)..'</font>') or '')..body
+        self.plain[i]=name..(q.text or '')..(q.rejected and ' REJECTED' or '')
         self.lines[i]=l
     end
     self.typeFrom=typewriter and os.clock() or nil
@@ -159,6 +162,12 @@ function Admin:layout()
 end
 function Admin:update(wish)
     if type(wish)~='table' or not wish.eventId or wish.phase=='Idle' then self:reset();return end
+    -- the server spends a second or two turning the command into actions: no extra window,
+    -- the last view just stays (without the input box) until the result arrives
+    if wish.phase=='Thinking' then
+        wish=table.clone(wish);wish.phase=(self.event==wish.eventId and self.phase) or 'Roulette'
+        wish.canType=false;wish.remainingExact=0;wish.remaining=0
+    end
     local changed=self.event~=wish.eventId or self.phase~=wish.phase
     if changed then self.pending=false;self.error.Visible=false end
     self.event=wish.eventId;self.phase=wish.phase;self.canType=wish.canType==true
@@ -194,17 +203,11 @@ function Admin:update(wish)
             kicker=ok and 'COMMAND EXECUTED!' or (wish.outcome=='Cancelled' and 'COMMAND CANCELLED' or 'COMMAND REJECTED')
             kickerColour=ok and C.Green or C.Red
             local quotes={}
-            for _,q in ipairs(wish.quotes or {}) do quotes[#quotes+1]={name=q.name,color=colour(q.color),text=q.text} end
+            for _,q in ipairs(wish.quotes or {}) do quotes[#quotes+1]={name=q.name,color=colour(q.color),text=q.text,rejected=q.rejected} end
             if #quotes==0 then quotes[1]={name=author.name,color=author.color,text=wish.finalPrompt or wish.prompt or ''} end
             self:setLines(quotes)
             effect=wish.effect
             if ok then UISound.play('success') end
-        elseif self.phase=='Thinking' then
-            kicker='THE ADMIN PANEL IS THINKING...'
-            local quotes={}
-            for _,q in ipairs(wish.quotes or {}) do quotes[#quotes+1]={name=q.name,color=colour(q.color),text=q.text} end
-            if #quotes==0 then quotes[1]={name=author.name,color=author.color,text=wish.finalPrompt or wish.prompt or ''} end
-            self:setLines(quotes)
         elseif self.phase=='Resolving' then
             kicker='THE ADMIN PANEL IS WORKING'
             self:setLines({{name=author.name,color=author.color,suffix=' ',text='used the admin panel...'}})

@@ -329,7 +329,10 @@ local LABEL={
 function Rules.normalizePlan(raw)
     if type(raw)~='table' then return nil end
     local plan={actions={},caption=type(raw.caption)=='string' and Rules.sanitize(raw.caption) or nil,
-        cancelled=raw.cancelled==true,refused=raw.refused==true,reason=type(raw.reason)=='string' and Rules.sanitize(raw.reason) or nil}
+        cancelled=raw.cancelled==true,refused=raw.refused==true,reason=type(raw.reason)=='string' and Rules.sanitize(raw.reason) or nil,rejected={}}
+    for _,who in ipairs(type(raw.rejected_additions)=='table' and raw.rejected_additions or {}) do
+        if type(who)=='string' then plan.rejected[#plan.rejected+1]=who:sub(1,40) end
+    end
     for _,a in ipairs(type(raw.actions)=='table' and raw.actions or {}) do
         if type(a)=='table' and VALID[a.type] and #plan.actions<8 then
             local clean={type=a.type}
@@ -346,7 +349,13 @@ function Rules.execute(s,e,plan)
     if not eligible(s,e.recipient) then return false,'The author is no longer in the round.','Rejected' end
     plan=Rules.normalizePlan(plan)
     if not plan then return false,'The Admin Panel could not read that command.','Rejected' end
-    if plan.refused then return false,plan.reason or plan.caption or 'The Admin Panel refused that command.','Rejected' end
+    -- additions that did not fit are rejected on their own; the rest of the command still runs
+    e.rejected={}
+    for _,who in ipairs(plan.rejected) do
+        local id=findName(s,who)
+        if id and e.additions[id] and e.additions[id]~='' then e.rejected[id]=true end
+    end
+    if plan.refused then return false,plan.reason or 'This command does not fit the game rules.','Rejected' end
     if plan.cancelled then return false,plan.caption or 'Someone cancelled the command!','Cancelled' end
     if #plan.actions==0 then return false,plan.caption or 'The Admin Panel did not find anything to do.','Rejected' end
     local labels={}
@@ -464,12 +473,6 @@ local function split(t)
     for piece in t:gmatch('[^|]+') do piece=piece:match('^%s*(.-)%s*$');if piece~='' then parts[#parts+1]=' '..piece..' ' end end
     return parts
 end
-local IMPROVISE={
-    {caption='The Admin Panel improvised: METEOR SHOWER!',actions={{type='damage_troops',target='enemies',percent=45}}},
-    {caption='The Admin Panel improvised: GOLD RAIN!',actions={{type='give',target='author',resource='Gold',amount=50}}},
-    {caption='The Admin Panel improvised: REINFORCEMENTS!',actions={{type='summon',target='author',unit='Barbarian',count=6}}},
-    {caption='The Admin Panel improvised: EVERYONE FREEZE!',actions={{type='freeze',target='enemies',seconds=8}}},
-}
 function Rules.localPlan(s,e)
     local plan={actions={}}
     local base=' '..lower(Rules.sanitize(e.prompt))..' '
@@ -484,10 +487,8 @@ function Rules.localPlan(s,e)
             plan.actions[#plan.actions+1]=a
         end
     end
-    if #plan.actions==0 then
-        local pick=IMPROVISE[math.floor(random(s.wish)*#IMPROVISE)+1]
-        plan=copy(pick)
-    end
+    if #plan.actions==0 then return {refused=true,reason='The Admin Panel cannot do that command.'} end
+    plan.rejected_additions={}
     -- roulette additions: modifiers change everything, new actions are appended, the rest is ignored
     for _,id in ipairs(s.wish.ids) do
         local text=e.additions[id]
@@ -497,8 +498,12 @@ function Rules.localPlan(s,e)
             local target=clauseTarget(s,e,t)
             if target=='author' and id~=e.recipient then target=name(s,id) end
             local extra={};for _,piece in ipairs(split(t)) do for _,a in ipairs(detect(piece)) do extra[#extra+1]=a end end
+            local modifier=target~=nil
+            for _,list in pairs(MOD) do if has(t,list) then modifier=true end end
             if #extra>0 then
                 for _,a in ipairs(extra) do a.target=a.target or target;plan.actions[#plan.actions+1]=a end
+            elseif not modifier then
+                plan.rejected_additions[#plan.rejected_additions+1]=name(s,id)
             else
                 for _,a in ipairs(plan.actions) do
                     if has(t,MOD.half) then for _,k in ipairs({'percent','count','amount','seconds'}) do if a[k] then a[k]=a[k]*.5 end end;a.percent=a.percent or 30;a.power=1 end
@@ -581,7 +586,7 @@ function Rules.canWish(s,uid,op,id)
     local e=s.wish and s.wish.event
     if s.status~='Active' or not eligible(s,uid) or not e or tostring(id or '')~=e.id or s.elapsed>=e.deadline or e.submitted[uid] then return false end
     if e.phase=='Prompt' then return uid==e.recipient and (op=='WishDraft' or op=='WishSubmit') end
-    if e.phase=='Append' then return op=='AppendDraft' or op=='AppendSubmit' end
+    if e.phase=='Append' then return uid~=e.recipient and (op=='AppendDraft' or op=='AppendSubmit') end
     return false
 end
 function Rules.approve(s,uid,eventId,sourcePhase,filtered)
@@ -657,7 +662,7 @@ function Rules.tick(s,elapsed)
                 e.submitted={};e.buffers={};e.pending={};phase(s,e,'Append')
             end
         elseif e.phase=='Append' then
-            for _,id in ipairs(w.ids) do if eligible(s,id) and not e.submitted[id] then submit(s,e,id,'Append') end end
+            for _,id in ipairs(w.ids) do if id~=e.recipient and eligible(s,id) and not e.submitted[id] then submit(s,e,id,'Append') end end
             if anyPending(e) then phase(s,e,'Resolving') else think(s,e) end
         elseif e.phase=='Resolving' then
             -- unfiltered clauses are dropped; the filtered command still runs
@@ -682,8 +687,8 @@ function Rules.snapshot(s,uid)
     if not e then return {phase='Idle',nextIn=math.max(0,math.ceil(w.nextAt-s.elapsed)),queue=#w.queue} end
     local author=s.players[e.recipient];local quotes={}
     if e.prompt~='' then quotes[#quotes+1]={uid=e.recipient,name=author and author.name or 'Player',color=author and copy(author.color),text=e.prompt} end
-    if e.phase=='Applied' or e.phase=='Thinking' then for _,id in ipairs(w.ids) do local text=e.additions[id]
-        if text and text~='' then local p=s.players[id];quotes[#quotes+1]={uid=id,name=p and p.name or 'Player',color=p and copy(p.color),text=text} end
+    if e.phase=='Applied' then for _,id in ipairs(w.ids) do local text=e.additions[id]
+        if text and text~='' then local p=s.players[id];quotes[#quotes+1]={uid=id,name=p and p.name or 'Player',color=p and copy(p.color),text=text,rejected=e.rejected and e.rejected[id] or nil} end
     end end
     local canType=Rules.canWish(s,uid,e.phase=='Prompt' and 'WishDraft' or 'AppendDraft',e.id)
     return {eventId=e.id,phase=e.phase,remaining=math.max(0,math.ceil(e.deadline-s.elapsed)),remainingExact=math.max(0,e.deadline-s.elapsed),
