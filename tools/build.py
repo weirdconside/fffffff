@@ -51,6 +51,7 @@ def add_script(parent, cls, name, path):
 add_script(shared, 'ModuleScript', 'ShopIcons', 'new/ShopIcons.lua')
 add_script(shared, 'ModuleScript', 'StudTransition', 'new/StudTransition.lua')
 add_script(shared, 'ModuleScript', 'UISound', 'new/UISound.lua')
+add_script(shared, 'ModuleScript', 'RewardsUI', 'new/RewardsUI.lua')
 add_script(sss, 'ModuleScript', 'Perks', 'new/Perks.lua')
 add_script(sss, 'ModuleScript', 'AdminBrain', 'new/AdminBrain.lua')
 add_script(sss, 'ModuleScript', 'AdminCommands', 'new/AdminCommands.lua')

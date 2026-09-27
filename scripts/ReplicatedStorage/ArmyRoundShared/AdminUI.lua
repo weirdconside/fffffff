@@ -207,12 +207,13 @@ function Admin:update(wish)
             kicker=typing and 'EVERYONE ADDS - TYPE YOUR PART!' or 'EVERYONE ADDS TO THE COMMAND'
             self:setLines({{name=author.name,color=author.color,text=wish.prompt or ''}})
         elseif self.phase=='Applied' then
+            -- "REJECTED" is shown only next to the line that was rejected, never as the headline
             local ok=wish.outcome=='Executed'
-            kicker=ok and 'COMMAND EXECUTED!' or (wish.outcome=='Cancelled' and 'COMMAND CANCELLED' or 'COMMAND REJECTED')
-            kickerColour=ok and C.Green or C.Red
+            kicker=ok and 'COMMAND EXECUTED!' or (wish.outcome=='Cancelled' and 'COMMAND CANCELLED' or 'ADMIN COMMAND')
+            kickerColour=ok and C.Green or (wish.outcome=='Cancelled' and C.Red or C.Gold)
             local quotes={}
             for _,q in ipairs(wish.quotes or {}) do quotes[#quotes+1]={name=q.name,color=colour(q.color),text=q.text,rejected=q.rejected} end
-            if #quotes==0 then quotes[1]={name=author.name,color=author.color,text=wish.finalPrompt or wish.prompt or ''} end
+            if #quotes==0 then quotes[1]={name=author.name,color=author.color,text=wish.finalPrompt or wish.prompt or '',rejected=wish.outcome=='Rejected'} end
             self:setLines(quotes)
             effect=wish.effect
             if ok then UISound.play('success') end

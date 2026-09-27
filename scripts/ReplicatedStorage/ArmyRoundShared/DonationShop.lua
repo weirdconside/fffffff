@@ -90,6 +90,12 @@ function Shop.new(parent,remote,catalog)
     label(plate,'Caption','SHOP',17,C.Ink,{Size=UDim2.fromScale(1,1),ZIndex=16})
     local rbadge=make('Frame',holder,'Robux',{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromOffset(74,8),Size=UDim2.fromOffset(28,28),ZIndex=15,BackgroundColor3=C.Green,BorderSizePixel=0})
     round(rbadge);stroke(rbadge,C.Ink,2);label(rbadge,'R','R$',12,C.White,{Size=UDim2.fromScale(1,1),ZIndex=17})
+    -- promo codes button right under the shop button
+    local codes=make('TextButton',holder,'Codes',{Text='',AutoButtonColor=false,AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,0,100),Size=UDim2.fromOffset(78,46),ZIndex=6})
+    Theme.skin(codes,C.Green)
+    label(codes,'Caption','CODES',17,C.White,{Position=UDim2.fromOffset(0,2),Size=UDim2.new(1,0,0,24),ZIndex=8})
+    label(codes,'Text','FREE TICKETS',9,C.Ink,{Position=UDim2.fromOffset(0,25),Size=UDim2.new(1,0,0,14),ZIndex=8})
+    self.codesButton=codes
     self.button=holder
     -- ------------------------------------------------------------ window
     local shade=make('TextButton',gui,'Shade',{Text='',AutoButtonColor=false,Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(10,8,20),BackgroundTransparency=.3,Visible=false,ZIndex=20,BorderSizePixel=0})
@@ -180,6 +186,7 @@ function Shop.new(parent,remote,catalog)
     end
     self.setOpen=setOpen
     self.connections[#self.connections+1]=button.Activated:Connect(function() setOpen(true) end)
+    self.connections[#self.connections+1]=codes.Activated:Connect(function() if self.onCodes then self.onCodes() end end)
     self.connections[#self.connections+1]=close.Activated:Connect(function() setOpen(false) end)
     self.connections[#self.connections+1]=shade.Activated:Connect(function() setOpen(false) end)
     self.connections[#self.connections+1]=button.MouseEnter:Connect(function() TweenService:Create(button,TweenInfo.new(.15),{Size=UDim2.fromOffset(78,78)}):Play() end)

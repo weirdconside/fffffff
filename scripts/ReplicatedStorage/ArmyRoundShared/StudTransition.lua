@@ -57,7 +57,24 @@ function T.new(parent)
         local s=Instance.new('UIStroke');s.Color=INK;s.Thickness=2;s.Parent=d
         self.dots[i]=d
     end
-    self.connection=RunService.RenderStepped:Connect(function(dt) if self.shown then self:step(dt) end end)
+    -- round result: only the bricks and one big word (no logo)
+    local resultStage=Instance.new('Frame');resultStage.Name='Result';resultStage.BackgroundTransparency=1;resultStage.Size=UDim2.fromScale(1,1);resultStage.ZIndex=10;resultStage.Visible=false;resultStage.Parent=gui
+    local resultText=Instance.new('TextLabel');resultText.Name='Word';resultText.BackgroundTransparency=1;resultText.AnchorPoint=Vector2.new(.5,.5);resultText.Position=UDim2.fromScale(.5,.47)
+    resultText.Size=UDim2.fromScale(.86,.3);resultText.FontFace=SMALL_FONT;resultText.TextScaled=true;resultText.ZIndex=14;resultText.Parent=resultStage
+    local rs=Instance.new('UIStroke');rs.Color=INK;rs.Thickness=7;rs.Parent=resultText
+    local rg=Instance.new('UIGradient');rg.Rotation=90;rg.Parent=resultText
+    local shadow=resultText:Clone();shadow.Name='Shadow';shadow.ZIndex=13;shadow.Position=UDim2.new(.5,6,.47,8);shadow.TextColor3=INK;shadow.Parent=resultStage
+    shadow:FindFirstChildOfClass('UIGradient'):Destroy()
+    self.resultStage,self.resultText,self.resultShadow,self.resultGradient=resultStage,resultText,shadow,rg
+    self.resultScale=Instance.new('UIScale');self.resultScale.Parent=resultStage
+    self.connection=RunService.RenderStepped:Connect(function(dt)
+        if self.shown then self:step(dt) end
+        if resultStage.Visible then
+            local t=os.clock()
+            resultText.Rotation=math.sin(t*2.2)*3;shadow.Rotation=resultText.Rotation
+            resultText.Position=UDim2.fromScale(.5,.47+math.sin(t*3)*.008);shadow.Position=UDim2.new(.5,6,.47+math.sin(t*3)*.008,8)
+        end
+    end)
     return self
 end
 function T:layout()
@@ -130,12 +147,13 @@ function T:step(dt)
 end
 local function place(row,x) row.Position=UDim2.fromOffset(x,row.Position.Y.Offset) end
 -- Bricks sweep in from the right. Yields until the screen is covered.
-function T:cover(title,subtitle,duration)
+-- result: nil = logo (loading), 'win' / 'lose' = big result word, 'none' = bricks only
+function T:cover(title,subtitle,duration,result)
     self.serial+=1;local serial=self.serial
     duration=duration or .45
     self:layout();self.gui.Enabled=true;self.active=true;UISound.play('whoosh')
     self.label.Text=title or ''
-    self.stage.Visible=false;self.shown=false
+    self.stage.Visible=false;self.shown=false;self.resultStage.Visible=false
     local d=self.width
     for i,row in ipairs(self.rows) do
         place(row,d*1.3)
@@ -143,6 +161,18 @@ function T:cover(title,subtitle,duration)
     end
     task.wait(duration+ROWS*.03)
     if serial~=self.serial then return end
+    if result=='none' then return end
+    if result=='win' or result=='lose' then
+        local win=result=='win'
+        local word=win and 'YOU WIN!' or 'YOU LOSE'
+        self.resultText.Text=word;self.resultShadow.Text=word
+        self.resultText.TextColor3=Color3.new(1,1,1)
+        self.resultGradient.Color=win and ColorSequence.new(Color3.fromRGB(255,244,160),Color3.fromRGB(255,170,30))
+            or ColorSequence.new(Color3.fromRGB(255,150,140),Color3.fromRGB(200,24,30))
+        self.resultScale.Scale=0;self.resultStage.Visible=true
+        TweenService:Create(self.resultScale,TweenInfo.new(.45,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
+        return
+    end
     -- logo in: every letter pops with a puff of stud bits
     self.t=0;self.popped={};self.air={};self.lastShine=nil
     if self.logo then
@@ -162,7 +192,7 @@ end
 function T:reveal(duration)
     self.serial+=1;local serial=self.serial
     duration=duration or .6
-    self.stage.Visible=false;self.shown=false;UISound.play('whoosh')
+    self.stage.Visible=false;self.shown=false;self.resultStage.Visible=false;UISound.play('whoosh')
     local d=self.width or 2000
     for i,row in ipairs(self.rows) do
         TweenService:Create(row,TweenInfo.new(duration,Enum.EasingStyle.Quart,Enum.EasingDirection.In,0,false,(i-1)*.03),{Position=UDim2.fromOffset(-d*1.45,row.Position.Y.Offset)}):Play()

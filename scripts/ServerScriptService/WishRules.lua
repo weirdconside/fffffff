@@ -259,7 +259,8 @@ function Rules.snapshot(s,uid)
     local e=w.event
     if not e then return {phase='Idle',nextIn=math.max(0,math.ceil(w.nextAt-s.elapsed)),queue=#w.queue} end
     local author=s.players[e.recipient];local quotes={}
-    if e.prompt~='' then quotes[#quotes+1]={uid=e.recipient,name=author and author.name or 'Player',color=author and copy(author.color),text=e.prompt} end
+    if e.prompt~='' then quotes[#quotes+1]={uid=e.recipient,name=author and author.name or 'Player',color=author and copy(author.color),text=e.prompt,
+        rejected=(e.phase=='Applied' and e.outcome=='Rejected') or nil} end
     if e.phase=='Applied' then for _,id in ipairs(w.ids) do local text=e.additions[id]
         if text and text~='' then local p=s.players[id];quotes[#quotes+1]={uid=id,name=p and p.name or 'Player',color=p and copy(p.color),text=text,rejected=e.rejected and e.rejected[id] or nil} end
     end end

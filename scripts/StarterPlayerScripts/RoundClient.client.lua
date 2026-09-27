@@ -26,9 +26,9 @@ local UISound=require(shared:WaitForChild("UISound"))
 local transition=Transition.new(playerGui)
 local ROOM_NAMES={"ROOM 1","ROOM 2","ROOM 3"}
 local launchCover=false
-local function sailTransition(title,subtitle,hold)
+local function sailTransition(title,subtitle,hold,result)
     task.spawn(function()
-        if not transition:isActive() then transition:cover(title,subtitle) end
+        if not transition:isActive() then transition:cover(title,subtitle,nil,result) end
         task.wait(hold or .8)
         transition:reveal()
     end)
@@ -99,6 +99,16 @@ local ticketButton=Instance.new("TextButton");ticketButton.Name="Ticket";ticketB
 Theme.button(ticketButton,Theme.Colors.Gold,15);ticketButton.TextColor3=Theme.Colors.Ink
 ticketButton.Activated:Connect(function() if active and token then command:FireServer(token,"UseTicket",{}) end end)
 local timerInfo={nextIn=nil,at=0,phase="Idle",queue=nil}
+-- short messages (order results, errors) when no building window is open
+local toast=Instance.new("TextLabel");toast.Name="Toast";toast.AnchorPoint=Vector2.new(.5,1);toast.Position=UDim2.new(.5,0,1,-110);toast.Size=UDim2.fromOffset(560,40)
+toast.BackgroundTransparency=1;toast.Visible=false;toast.ZIndex=8;toast.TextWrapped=true;toast.Parent=boostGui
+Theme.headline(toast,18,Theme.Colors.White)
+local toastSerial=0
+local function showToast(text)
+    toastSerial+=1;local mine=toastSerial
+    toast.Text=tostring(text);toast.Visible=true;toast.TextTransparency=0
+    task.delay(3,function() if toastSerial==mine then toast.Visible=false end end)
+end
 local chips={}
 for index,info in ipairs({{key="army",text="ARMY BOOST",color=Theme.Colors.Red},{key="workers",text="WORKER BOOST",color=Theme.Colors.Green},{key="shield",text="SHIELD UP",color=Theme.Colors.Blue},{key="frozen",text="YOU ARE FROZEN",color=Color3.fromRGB(120,200,255)}}) do
     local chip=Instance.new("Frame");chip.Name=info.key;chip.LayoutOrder=10+index;chip.Size=UDim2.fromOffset(150,32);chip.Visible=false;chip.Parent=boostRow
@@ -215,12 +225,24 @@ local function showAction(target)
         end
         if Data.Craft.Stations[b.kind] then addAction("CRAFT",Color3.fromRGB(128,89,170),function()send("Craft",{key=target.key})end) end
     elseif target.kind=="Base" and state.bases[target.key] then
-        local base=state.bases[target.key];panelTitle.Text=(base.kind=="Territory" and "GOLD" or "TOWN")
-        panelInfo.Text=""
+        local base=state.bases[target.key]
+        own=base.owner==tostring(player.UserId)
+        local ownerName=base.owner and state.roster and state.roster[base.owner] and state.roster[base.owner].name
+        panelTitle.Text=(base.kind=="Territory" and "GOLD ISLAND" or ((ownerName or "ENEMY").." TOWN"))
+        if base.kind=="Territory" then
+            panelInfo.Text=(base.guards or 0)>0 and ("Guarded by "..base.guards..". Attack to clear the guards, then hold it.")
+                or (own and "Yours. Hire gold workers here." or ((ownerName and ownerName.."'s island. " or "Free island. ").."Stand on it with troops to capture."))
+        else
+            panelInfo.Text="HP "..math.ceil(base.hp or 0).."/"..math.ceil(base.maxHP or 0)..(own and "" or ". Break it to win this base.")
+        end
+        local function sendArmy()
+            send("Order",{pos=base.pos,target=target.key});rallyNext=false
+            panelInfo.Text=own and "Army is on its way." or "Army is attacking!"
+        end
         if own then
             if base.kind=="Territory" then addAction("GOLD WORK",Color3.fromRGB(196,142,45),function()send("BuyWorker",{key="BASE:"..target.key})end) end
-            addAction("MOVE",Color3.fromRGB(66,119,164),function()rallyNext=true;tell("Click the ground to move your army.")end)
-        else addAction("ATK",Color3.fromRGB(173,67,72),function()rallyNext=true;tell("Click the base again or the ground to send your army.")end) end
+            addAction("MOVE",Color3.fromRGB(66,119,164),sendArmy)
+        else addAction("ATK",Color3.fromRGB(173,67,72),sendArmy) end
     else
         hideAction();return
     end
@@ -230,7 +252,7 @@ local currentWorld,lastSequence=nil,-1
 local highlighted=Instance.new("Highlight")
 highlighted.Name="RoundSelection";highlighted.FillTransparency=0.92;highlighted.OutlineTransparency=0.1
 highlighted.Enabled=false;highlighted.Parent=Workspace
-tell=function(text) if actionPanel.Visible then panelInfo.Text=text end end
+tell=function(text) if actionPanel.Visible then panelInfo.Text=text elseif text and text~="" then showToast(text) end end
 local function blockedInput() return not windowFocused or transition:isActive() or adminUI:isBlocking() or UIS:GetFocusedTextBox()~=nil or GuiService.MenuIsOpen==true or (state~=nil and (tonumber(state.locked) or 0)>0) end
 send=function(op,payload)
     if active and token then command:FireServer(token,op,payload or {}) end
@@ -307,8 +329,16 @@ local function showHover(target)
         highlighted.OutlineColor=target.owner==tostring(player.UserId) and Color3.fromRGB(124,237,164) or Color3.fromRGB(247,116,116)
     end
 end
+local function marker(pos)
+    local ring=Instance.new("Part");ring.Anchored=true;ring.CanCollide=false;ring.CanQuery=false;ring.CanTouch=false;ring.CastShadow=false
+    ring.Shape=Enum.PartType.Cylinder;ring.Material=Enum.Material.Neon;ring.Color=Color3.fromRGB(124,237,164);ring.Transparency=.2
+    ring.Size=Vector3.new(.2,1,1);ring.CFrame=CFrame.new(pos+Vector3.new(0,.15,0))*CFrame.Angles(0,0,math.rad(90));ring.Parent=Workspace
+    game:GetService("TweenService"):Create(ring,TweenInfo.new(.5),{Size=Vector3.new(.2,6,6),Transparency=1}):Play()
+    game:GetService("Debris"):AddItem(ring,.6)
+end
 local function order(hit)
     if not hit then return end
+    marker(hit.Position)
     local ids={};local hadSelection=next(selectedUnits)~=nil
     local units=currentWorld and currentWorld:FindFirstChild("Units")
     local live={}
@@ -337,8 +367,8 @@ local function activate(hit)
         send("Expand",{key=target.key,owner=target.owner})
     elseif target.kind=="Building" and own then
         showAction(target)
-    elseif target.kind=="Base" then
-        showAction(target)
+    elseif target.kind=="Base" or (target.kind=="Building" and target.base) then
+        showAction({kind="Base",key=target.base or target.key,owner=target.owner,object=target.object})
     elseif target.kind=="Camp" or (target.kind=="Unit" and not own and not target.dead and target.unitRole~="Worker" and target.unitRole~="Builder") then
         order(hit)
     elseif target.kind=="Unit" and own and target.unitRole=="Troop" and not target.dead then
@@ -398,7 +428,7 @@ local function phase()
         if animation then animation:destroy();animation=nil end
         active=false;token=nil;state=nil;currentWorld=nil;hud.Enabled=false;actionGui.Enabled=false;adminUI:reset();lobbyPicker:hide();baseBadges:reset();hideAction()
         boostGui.Enabled=false
-        sailTransition("BACK TO THE LOBBY","Step on a square to play again",.7)
+        sailTransition("BACK TO THE LOBBY","Step on a square to play again",1.1,"none")
         selectedUnits={};selectedBuilding=nil;rallyNext=false
         showHover(nil);restoreCamera();updateResources(nil)
         pcall(function() GuiService.TouchControlsEnabled=true end)
@@ -527,11 +557,14 @@ UIS.TouchEnded:Connect(function(input,processed)
     -- a quick tap with a little finger wobble is still a tap
     if touchMoved and not (duration<.3 and touchMax<30) then return end
     local hit=castAt(p.X,p.Y)
-    local target=hit and classify(hit.Instance)
+    if not hit then return end
+    local target=classify(hit.Instance)
     local clickable=target and (target.kind=="Building" or target.kind=="Expand" or target.kind=="Base"
         or (target.kind=="Unit" and target.owner==tostring(player.UserId)))
-    -- holding on empty ground (or an enemy) sends the army; holding on a house still opens it
-    if duration>=.55 and not clickable then order(hit) else activate(hit) end
+    if clickable or rallyNext then activate(hit);return end
+    -- a tap on the island (not on a house or anything with a window) sends the army there
+    if hit.Instance:GetAttribute("RoundWater") or hit.Instance:GetAttribute("RoundWaterSurface") then return end
+    hideAction();order(hit)
 end)
 UIS.InputEnded:Connect(function(input)
     if input.UserInputType==Enum.UserInputType.MouseButton3 then drag=false end
@@ -614,7 +647,13 @@ end)
 -- The server asks us to close the curtain before it moves us back to the lobby.
 player:GetAttributeChangedSignal("SceneCover"):Connect(function()
     if player:GetAttribute("SceneCover") and active and not transition:isActive() then
-        task.spawn(function() transition:cover("BACK TO THE LOBBY","Step on a square to play again") end)
+        -- the end-of-round curtain shows only the result, not the loading logo
+        local me=tostring(player.UserId);local result="none"
+        if state then
+            if state.winner==me then result="win"
+            elseif state.defeated or (state.status=="Ended" and state.winner and state.winner~=me) then result="lose" end
+        end
+        task.spawn(function() transition:cover(nil,nil,nil,result) end)
     end
 end)
 player:GetAttributeChangedSignal("Token_Ticket"):Connect(function() if active then refreshBoosts(state) end end)

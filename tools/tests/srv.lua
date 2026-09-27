@@ -96,4 +96,15 @@ local plate=oc:FindFirstChild("ShopCosmetic") and oc.ShopCosmetic:FindFirstChild
 assert(plate and plate:GetAttribute("OwnerTag") and plate.Face.Text=="OWNER","owner plate")
 assert(owner:GetAttribute("Perk_Owner")==true,"owner attribute")
 print("owner:",ostate.message,"tickets",ostate.tokens.Ticket)
+-- promo codes + like reward (Studio: no DataStore, session only)
+local function last(kind,who) local out;for _,m in ipairs(dmsgs) do if m[1]==kind and m[3]==who then out=m[2] end end;return out end
+local function fire(op,arg) clockValue=clockValue+2;donation.OnServerEvent:Fire(localPlayer,op,arg) end
+fire("Redeem","noob");print("code noob:",last("Code",localPlayer).ok,last("Code",localPlayer).message)
+fire("Redeem","NOOB");print("code again:",last("Code",localPlayer).ok,last("Code",localPlayer).message)
+fire("Redeem","hacker");print("code bad:",last("Code",localPlayer).ok,last("Code",localPlayer).message)
+fire("Redeem"," battle ");print("code battle:",last("Code",localPlayer).ok,last("Code",localPlayer).message)
+print("found:",last("State",localPlayer).codesFound,"/",last("State",localPlayer).codesTotal,"tickets",last("State",localPlayer).tokens.Ticket)
+fire("RewardStatus");print("like status:",last("Reward",localPlayer).status)
+fire("RewardClaim");print("like claim now:",last("Reward",localPlayer).ok,last("Reward",localPlayer).message)
+assert(last("Code",localPlayer).ok==true and last("Reward",localPlayer).ok==false,"codes and like gate")
 print("ERRORS:",#ERRORS)

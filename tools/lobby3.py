@@ -4,6 +4,7 @@ import numpy as np
 from lib import *
 import lobby as L
 import poses as PZ
+import rewards_lobby as RW
 from lobby import TOP, WATER, hex_center, tc, R_HEX, part, cyl_v, light, model, folder, place_asset
 
 def orig_lobby(tree):
@@ -255,6 +256,8 @@ def build(tree):
         for sx, sz in ((-11, -9), (-11, 9)):
             lantern(deco, (x + sx, TOP, z + sz), glow)
     taken = [(x, z, 13) for (x, z) in ROOMS] + [(SHOP_POS[0], SHOP_POS[1], 15), (SPAWN[0], SPAWN[1], 14)]
+    rspots = RW.spots(tiles, SHOP_POS, SPAWN)
+    RW.reserve(rspots, taken)
     corridor = []
     for (ex, ez) in ends + [(x - 10, z) for (x, z) in ROOMS]:   # walkways stay free of props
         a = (SPAWN[0] + 6, SPAWN[1]); length = math.hypot(ex - a[0], ez - a[1])
@@ -295,6 +298,7 @@ def build(tree):
             if not on_land(x, z): continue
             return x, z
         return None
+    RW.build(scen, rspots, lift_at)
     place_scenes(ctx, scen, tiles, lift_at, taken)
     taken.extend(corridor)
     # ------------------------------------------------------------ game decorations: towers, carts, camps, mines, fences

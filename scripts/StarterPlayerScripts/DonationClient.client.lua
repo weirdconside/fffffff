@@ -14,8 +14,14 @@ local Shop=require(shared:WaitForChild('DonationShop'))
 local Catalog=require(shared:WaitForChild('DonationCatalog'))
 local playerGui=player:WaitForChild('PlayerGui')
 local shop=Shop.new(playerGui,remote,Catalog)
-local function sceneAvailability() shop:setAvailable(player:GetAttribute('ScenePhase')~='Round' and player:GetAttribute('ScenePhase')~='Transferring') end
-local function intro() shop:setIntro(player:GetAttribute('IntroActive')==true) end
+local Rewards=require(shared:WaitForChild('RewardsUI'))
+local rewards=Rewards.new(playerGui,remote)
+shop.onCodes=function() rewards:openCodes() end
+local function sceneAvailability()
+    local lobby=player:GetAttribute('ScenePhase')~='Round' and player:GetAttribute('ScenePhase')~='Transferring'
+    shop:setAvailable(lobby);rewards:setAvailable(lobby and player:GetAttribute('IntroActive')~=true)
+end
+local function intro() shop:setIntro(player:GetAttribute('IntroActive')==true);sceneAvailability() end
 player:GetAttributeChangedSignal('ScenePhase'):Connect(sceneAvailability)
 player:GetAttributeChangedSignal('IntroActive'):Connect(intro)
 sceneAvailability();intro()
@@ -37,7 +43,9 @@ TextChatService.OnIncomingMessage=function(message)
 end
 remote.OnClientEvent:Connect(function(kind,payload)
     if kind=='Open' then shop:openShop()
-    elseif kind=='State' then shop:applyState(payload)
+    elseif kind=='State' then shop:applyState(payload);rewards:applyState(payload)
+    elseif kind=='Reward' then rewards:showReward(payload)
+    elseif kind=='Code' then rewards:codeResult(payload)
     end
 end)
 remote:FireServer('State')

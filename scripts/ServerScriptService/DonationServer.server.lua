@@ -21,6 +21,7 @@ if not STUDIO then
     if ok then store=got else warn('[AdminShop] DataStore unavailable: '..tostring(got)) end
 end
 local sessions,rate={},{}
+local CODES_TOTAL=6
 local function retry(fn)
     local last
     for attempt=1,4 do
@@ -29,7 +30,7 @@ local function retry(fn)
     end
     return false,last
 end
-local function blank() return {passes={},tokens={Ticket=0},tipped=0,loaded=false} end
+local function blank() return {passes={},tokens={Ticket=0},tipped=0,loaded=false,codes={},likeSeenAt=nil,likeClaimed=false,joinedAt=os.time()} end
 local function readTokens(data,s)
     if type(data)=='table' and type(data.tokens)=='table' then
         for key in pairs(Catalog.Tokens) do
@@ -37,6 +38,11 @@ local function readTokens(data,s)
         end
     end
     if type(data)=='table' and tonumber(data.tipped) then s.tipped=math.max(0,math.floor(tonumber(data.tipped))) end
+    if type(data)=='table' then
+        if type(data.codes)=='table' then for code,v in pairs(data.codes) do if v then s.codes[tostring(code)]=true end end end
+        if tonumber(data.likeSeenAt) then s.likeSeenAt=tonumber(data.likeSeenAt) end
+        if data.likeClaimed==true then s.likeClaimed=true end
+    end
 end
 local function key(p) return 'u:'..p.UserId end
 local function isOwner(p)
@@ -67,7 +73,8 @@ Perks.persist=save
 local function publicState(p,message)
     local s=sessions[p];if not s then return end
     Perks.refresh(p)
-    remote:FireClient(p,'State',{passes=s.passes,tokens=s.tokens,tipped=s.tipped,studio=STUDIO,owner=s.owner==true,message=message})
+    local found=0;for _ in pairs(s.codes) do found+=1 end
+    remote:FireClient(p,'State',{passes=s.passes,tokens=s.tokens,tipped=s.tipped,studio=STUDIO,owner=s.owner==true,message=message,codesFound=found,codesTotal=CODES_TOTAL})
 end
 -- Lobby-only name plate for pass owners (OWNER > ADMIN > VIP).
 local FREDOKA=Font.new('rbxasset://fonts/families/FredokaOne.json',Enum.FontWeight.Bold,Enum.FontStyle.Normal)
@@ -170,10 +177,121 @@ local function ownerGrant(p,item)
     end
     publicState(p,'OWNER: '..item.title..' - FREE!')
 end
+-- ------------------------------------------------------------------ free tickets: promo codes + like reward
+-- Codes live only here on the server (ReplicatedStorage would let anyone read them).
+-- Each gives 1 ticket, once per account. BATTLE works for 7 days after the game first ran live.
+local CODES={NOOB={},METEOR={},GIANT={},FREEZE={},SECRETADMIN={},BATTLE={days=7}}
+CODES_TOTAL=0;for _ in pairs(CODES) do CODES_TOTAL+=1 end
+local BATTLE_EXPIRES_AT=nil   -- optional fixed end (unix time); nil = 7 days after the first live server
+local launchEpoch=os.time()
+if store then
+    task.spawn(function()
+        local ok,value=retry(function()
+            return DataStoreService:GetDataStore('BattleAdminCodes'):UpdateAsync('LaunchEpoch',function(old) return tonumber(old) or os.time() end)
+        end)
+        if ok and tonumber(value) then launchEpoch=tonumber(value) end
+    end)
+end
+local LIKE_MIN_SECONDS=60
+-- adds one ticket atomically; mark(old) decides whether this claim is allowed and records it
+local function grantTicket(p,mark)
+    local s=sessions[p];if not s then return false,'Please wait a moment.' end
+    if store then
+        local reason
+        local ok,result=pcall(function()
+            return store:UpdateAsync(key(p),function(old)
+                old=type(old)=='table' and old or {}
+                local allowed;allowed,reason=mark(old)
+                if not allowed then return nil end
+                old.tokens=type(old.tokens)=='table' and old.tokens or {}
+                old.tokens.Ticket=math.min(9999,(tonumber(old.tokens.Ticket) or 0)+1)
+                old.version=2;return old
+            end)
+        end)
+        if not ok then return false,'Could not save right now, try again in a moment.' end
+        if type(result)~='table' then return false,reason or 'Already claimed.' end
+        local before=s.tokens.Ticket or 0
+        readTokens(result,s)
+        if s.dirty then s.tokens.Ticket=math.min(s.tokens.Ticket,before+1) end
+        s.loaded=true
+        return true
+    end
+    local fake={codes=s.codes,likeClaimed=s.likeClaimed,likeSeenAt=s.likeSeenAt}
+    local allowed,reason=mark(fake);if not allowed then return false,reason end
+    s.likeClaimed=fake.likeClaimed==true
+    s.tokens.Ticket=(s.tokens.Ticket or 0)+1
+    return true
+end
+local function redeem(p,raw)
+    local s=sessions[p]
+    local code=string.upper(tostring(raw or '')):gsub('[%s%p]','')
+    local def=CODES[code]
+    if code=='' or not def then return false,'This code does not exist.' end
+    if s.codes[code] then return false,'You already used this code.' end
+    if def.days then
+        local ends=BATTLE_EXPIRES_AT or (launchEpoch+def.days*86400)
+        if os.time()>ends then return false,'This code has expired.' end
+    end
+    local ok,message=grantTicket(p,function(old)
+        old.codes=type(old.codes)=='table' and old.codes or {}
+        if old.codes[code] then return false,'You already used this code.' end
+        old.codes[code]=true;return true
+    end)
+    if ok then s.codes[code]=true;return true,'Code '..code..' redeemed: +1 ADMIN TICKET!' end
+    return false,message
+end
+local function likeStatus(p)
+    local s=sessions[p]
+    if s.likeClaimed then return 'claimed' end
+    if not s.likeSeenAt then
+        s.likeSeenAt=os.time()
+        if store then
+            task.spawn(function()
+                pcall(function() store:UpdateAsync(key(p),function(old)
+                    old=type(old)=='table' and old or {}
+                    if tonumber(old.likeSeenAt) then return nil end
+                    old.likeSeenAt=s.likeSeenAt;old.version=2;return old
+                end) end)
+            end)
+        end
+        return 'first'
+    end
+    -- the reward opens only in a LATER session and at least a minute after the offer was first shown
+    local waited=os.time()-s.likeSeenAt>=LIKE_MIN_SECONDS
+    if STUDIO then return waited and 'ready' or 'rejoin' end
+    if s.likeSeenAt>=s.joinedAt or not waited then return 'rejoin' end
+    return 'ready'
+end
+local function claimLike(p)
+    local s=sessions[p]
+    if likeStatus(p)~='ready' then return false,'Like and favorite the game, then rejoin to claim.' end
+    local ok,message=grantTicket(p,function(old)
+        if old.likeClaimed==true then return false,'You already got this reward.' end
+        old.likeClaimed=true;return true
+    end)
+    if ok then s.likeClaimed=true;return true,'Thank you! +1 ADMIN TICKET!' end
+    return false,message
+end
+local rewardRate={}
 remote.OnServerEvent:Connect(function(p,op,itemKey)
     local s=sessions[p];if not s or type(op)~='string' then return end
     local now=os.clock();if now-(rate[p] or 0)<.25 then return end;rate[p]=now
     if op=='State' then return publicState(p) end
+    if op=='RewardStatus' then return remote:FireClient(p,'Reward',{status=likeStatus(p)}) end
+    if op=='RewardClaim' or op=='Redeem' then
+        local r=rewardRate[p] or {n=0,t=0};rewardRate[p]=r
+        if now-r.t<1.5 then return end
+        r.t=now;r.n+=1
+        if r.n>40 then return remote:FireClient(p,op=='Redeem' and 'Code' or 'Reward',{ok=false,message='Too many tries, rejoin to try again.'}) end
+        if op=='Redeem' then
+            local ok,message=redeem(p,type(itemKey)=='string' and itemKey:sub(1,32) or '')
+            publicState(p)
+            return remote:FireClient(p,'Code',{ok=ok,message=message})
+        end
+        local ok,message=claimLike(p)
+        publicState(p)
+        return remote:FireClient(p,'Reward',{ok=ok,message=message,status=likeStatus(p)})
+    end
     if op~='Buy' then return end
     local item=Catalog.get(itemKey);if not item then return publicState(p,'Unknown item.') end
     if item.kind=='Pass' and s.passes[item.key] then return publicState(p,'You already own '..item.title..'.') end
@@ -242,7 +360,7 @@ MarketplaceService.ProcessReceipt=function(receipt)
 end
 Players.PlayerAdded:Connect(onPlayer)
 Players.PlayerRemoving:Connect(function(p)
-    save(p);Perks.detach(p);sessions[p]=nil;rate[p]=nil
+    save(p);Perks.detach(p);sessions[p]=nil;rate[p]=nil;rewardRate[p]=nil
 end)
 for _,p in ipairs(Players:GetPlayers()) do task.spawn(onPlayer,p) end
 game:BindToClose(function()
