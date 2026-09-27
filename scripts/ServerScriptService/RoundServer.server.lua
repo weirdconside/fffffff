@@ -1,0 +1,460 @@
+-- Server-authoritative reconstruction using the supplied BATTLE BUT WITH ADMIN PANEL assets/data.
+local Players=game:GetService("Players")
+local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local RunService=game:GetService("RunService")
+local Workspace=game:GetService("Workspace")
+local HttpService=game:GetService("HttpService")
+local TextService=game:GetService("TextService")
+local Shared=assert(ReplicatedStorage:FindFirstChild("ArmyRoundShared"),"ArmyRoundShared missing")
+local Data=require(Shared.RoundData)
+local State=require(script.Parent.RoundState)
+local World=require(script.Parent.RoundWorld)
+local Bots=require(script.Parent.RoundBots)
+local Queue=require(script.Parent.LobbyQueue)
+local WishRules=require(script.Parent.WishRules)
+local Theme=require(Shared.StudTheme)
+local Perks=require(script.Parent.Perks)
+local Command=Shared.Command
+local Snapshot=Shared.Snapshot
+local lobby=assert(Workspace:FindFirstChild("LobbyWorld"),"LobbyWorld missing")
+local pads=assert(lobby:FindFirstChild("NativeTeleporters"),"Native squares missing")
+local lobbySpawn=assert(Workspace:FindFirstChild("LobbySpawn"),"LobbySpawn missing")
+-- Clear only this system's old runtime/cache, never the approved lobby or source templates.
+local runtime=Workspace:FindFirstChild("ArmyRounds")
+if runtime then runtime:ClearAllChildren() else runtime=Instance.new("Folder");runtime.Name="ArmyRounds";runtime.Parent=Workspace end
+local storage=game:GetService("ServerStorage")
+for _,o in ipairs(storage:GetChildren()) do if o.Name:sub(1,11)=="RoundCache_" then o:Destroy() end end
+local rooms,membership,sessions,hidden,limits,addedPlayers={},{},{},{},{},{}
+local MAX_PLAYERS,COUNTDOWN=6,15
+-- The three ships in the harbour are the three rooms.
+local FLEETS={
+    {title="AZURE FLEET",color=Color3.fromRGB(52,142,230)},
+    {title="GOLDEN FLEET",color=Color3.fromRGB(255,196,44)},
+    {title="CRIMSON FLEET",color=Color3.fromRGB(222,58,52)},
+}
+local LOBBY_WATER_Y=0
+local queueSuppressed,lobbyRate={},{}
+local LOBBY_OPS={LobbyConfig=true,LobbyLeave=true}
+local function root(player)
+    local c=player.Character;local h=c and c:FindFirstChildOfClass("Humanoid")
+    return h and h.Health>0 and c:FindFirstChild("HumanoidRootPart") or nil
+end
+local function move(player,cf)
+    local r=root(player);if not r then return false end
+    r.AssemblyLinearVelocity=Vector3.new(0,0,0);r.AssemblyAngularVelocity=Vector3.new(0,0,0)
+    player.Character:PivotTo(cf);return true
+end
+local function restore(player)
+    local saved=hidden[player];hidden[player]=nil;if not saved then return end
+    if saved.connection then saved.connection:Disconnect() end
+    for o,properties in pairs(saved.objects) do
+        if o.Parent then for key,value in pairs(properties) do o[key]=value end end
+    end
+end
+local function conceal(player)
+    restore(player)
+    local character=player.Character;local r=root(player);if not character or not r then return false end
+    local saved={objects={}};hidden[player]=saved
+    local function set(o,values)
+        local props=saved.objects[o] or {};saved.objects[o]=props
+        for key,value in pairs(values) do if props[key]==nil then props[key]=o[key] end;o[key]=value end
+    end
+    local function hide(o)
+        if o:IsA("BasePart") then
+            set(o,{CanCollide=false});set(o,{CanTouch=false,CanQuery=false,Transparency=1,CastShadow=false})
+        elseif o:IsA("Decal") or o:IsA("Texture") then set(o,{Transparency=1})
+        elseif o:IsA("ParticleEmitter") or o:IsA("Trail") or o:IsA("Beam") or o:IsA("BillboardGui") then set(o,{Enabled=false}) end
+    end
+    for _,o in ipairs(character:GetDescendants()) do hide(o) end
+    saved.connection=character.DescendantAdded:Connect(hide)
+    local h=character:FindFirstChildOfClass("Humanoid")
+    set(h,{WalkSpeed=0,JumpPower=0,JumpHeight=0,AutoRotate=false,DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None})
+    set(r,{Anchored=true});return true
+end
+local function makeSign(room)
+    local holder=room.model:FindFirstChild("BillboardHolder",true)
+    if not holder then return nil end
+    local old=holder:FindFirstChild("ShipSign");if old then old:Destroy() end
+    local fleet=FLEETS[room.id] or FLEETS[1]
+    local gui=Instance.new("BillboardGui");gui.Name="ShipSign";gui.Size=UDim2.fromOffset(250,104);gui.AlwaysOnTop=true
+    gui.MaxDistance=260;gui.LightInfluence=0;gui.StudsOffsetWorldSpace=Vector3.new(0,1.5,0);gui.Adornee=holder
+    local plate=Instance.new("Frame");plate.Name="Plate";plate.AnchorPoint=Vector2.new(.5,0);plate.Position=UDim2.new(.5,0,0,24);plate.Size=UDim2.new(1,-10,0,76);plate.Parent=gui
+    Theme.skin(plate,Color3.fromRGB(58,50,40))
+    local ribbon=Instance.new("Frame");ribbon.Name="Ribbon";ribbon.AnchorPoint=Vector2.new(.5,0);ribbon.Position=UDim2.new(.5,0,0,0);ribbon.Size=UDim2.fromOffset(210,34);ribbon.ZIndex=5;ribbon.Parent=gui
+    Theme.skin(ribbon,fleet.color)
+    local title=Instance.new("TextLabel");title.Name="Fleet";title.BackgroundTransparency=1;title.Size=UDim2.fromScale(1,1);title.Text=fleet.title;title.ZIndex=8;title.Parent=ribbon
+    Theme.text(title,19,Color3.fromRGB(255,255,242));title.TextStrokeTransparency=.2;title.TextStrokeColor3=Color3.fromRGB(20,20,30)
+    local amount=Instance.new("TextLabel");amount.Name="Players";amount.BackgroundTransparency=1;amount.Position=UDim2.fromOffset(0,16);amount.Size=UDim2.new(1,0,0,28);amount.ZIndex=6;amount.Parent=plate
+    Theme.text(amount,22,Theme.Colors.Gold)
+    local status=Instance.new("TextLabel");status.Name="Timer";status.BackgroundTransparency=1;status.Position=UDim2.fromOffset(0,44);status.Size=UDim2.new(1,0,0,24);status.ZIndex=6;status.Parent=plate
+    Theme.text(status,15,Theme.Colors.White)
+    gui.Parent=holder
+    return gui
+end
+-- status: "idle" | "choosing" | number (countdown seconds) | "launch" | "sea"
+local function label(room,n,status)
+    local gui=room.sign
+    if not gui or not gui.Parent then gui=makeSign(room);room.sign=gui end
+    if not gui then return end
+    gui.Enabled=true
+    local cap=room.capacity
+    local amount=gui:FindFirstChild("Players",true);local timer=gui:FindFirstChild("Timer",true)
+    if amount then amount.Text=cap and ("CREW "..tostring(n).."/"..tostring(cap)) or (n>0 and "CREW "..tostring(n) or "NO CREW") end
+    if timer then
+        local text
+        if type(status)=="number" then text="SAILS IN "..tostring(math.max(0,math.ceil(status))).."s"
+        elseif status=="choosing" then text="CAPTAIN IS CHOOSING..."
+        elseif status=="launch" then text="SETTING SAIL..."
+        elseif status=="sea" then text="AT SEA - BACK SOON"
+        else text="WALK ON BOARD TO SAIL" end
+        timer.Text=text
+    end
+    room.model:SetAttribute("ShipStatus",type(status)=="number" and "countdown" or tostring(status or "idle"))
+end
+local function styleRoom(room)
+    for _,o in ipairs(room.model:GetDescendants()) do
+        if o:IsA("BasePart") and (o.Name=="EnterPart" or o.Name=="BeamPart") then o.CanCollide=false end
+    end
+    room.sign=makeSign(room)
+end
+local function playerCount(t) local n=0;for _ in pairs(t) do n=n+1 end;return n end
+local function sortedPlayers(t)
+    local r={};for p in pairs(t or {}) do r[#r+1]=p end
+    table.sort(r,function(a,b)return a.UserId<b.UserId end);return r
+end
+local function lobbySnapshot(room,player)
+    local queued=room.queued or {};local count=playerCount(queued)
+    local remaining=room.remaining and math.max(0,math.ceil(room.remaining)) or COUNTDOWN
+    local fleet=FLEETS[room.id] or FLEETS[1]
+    return {lobby={room=room.id,fleet=fleet.title,host=room.host and tostring(room.host.UserId) or nil,capacity=room.capacity,count=count,remaining=remaining,choosing=room.host~=nil and room.capacity==nil},message=room.host and (room.capacity and ("ROOM "..tostring(room.capacity)) or "CHOOSE") or "JOIN"}
+end
+local function sendLobby(room)
+    for p in pairs(room.queued or {}) do if p.Parent==Players then Snapshot:FireClient(p,lobbySnapshot(room,p)) end end
+end
+local function setHost(room) return Queue.host(room) end
+local function leaveQueue(room,player)
+    if Queue.remove(room,player) then
+        if player.Parent==Players then Snapshot:FireClient(player,{lobby={room=room.id,left=true}}) end
+        sendLobby(room)
+    end
+end
+local function free(session)
+    if sessions[session.room.id]~=session then return end
+    sessions[session.room.id]=nil;session.room.busy=false;session.room.deadline=nil;session.room.remaining=nil;session.room.queued={} ;session.room.order={};session.room.host=nil;session.room.capacity=nil
+    if session.world then World.destroy(session.world) end
+    label(session.room,0,"idle");sendLobby(session.room)
+end
+local function leave(player,teleport)
+    local session=membership[player];membership[player]=nil
+    restore(player)
+    player:SetAttribute("ScenePhase","Lobby");player:SetAttribute("RoundToken",nil)
+    player:SetAttribute("RoundHome",nil);player:SetAttribute("RoundCenter",nil);player:SetAttribute("RoundModel",nil)
+    player:SetAttribute("RoundBoundsMin",nil);player:SetAttribute("RoundBoundsMax",nil)
+    if session then
+        session.players[player]=nil
+        if session.state then State.remove(session.state,tostring(player.UserId)) end
+        if not next(session.players) then free(session) else label(session.room,playerCount(session.players),"sea") end
+    end
+    if teleport then move(player,lobbySpawn.CFrame+Vector3.new(0,4,0)) end
+end
+local function finish(session)
+    local list={};for p in pairs(session.players) do list[#list+1]=p end
+    for _,p in ipairs(list) do leave(p,true) end
+    free(session)
+end
+local function send(session,player,message)
+    if membership[player]~=session or not session.state then return end
+    local snapshot=State.snapshot(session.state,tostring(player.UserId));if not snapshot then return end
+    snapshot.token=session.token;snapshot.message=message;snapshot.sequence=session.sequence
+    if session.endedAt then snapshot.returnIn=math.max(0,math.ceil(Data.ResultSeconds-(os.clock()-session.endedAt))) end
+    if snapshot.winner then local winner=session.state.players[snapshot.winner];snapshot.winnerName=winner and winner.name or snapshot.winner end
+    Snapshot:FireClient(player,snapshot)
+end
+local function launch(room,group)
+    if room.busy then return end
+    room.busy=true;room.deadline=nil;room.remaining=nil
+    local token=HttpService:GenerateGUID(false):gsub("%-","")
+    local session={room=room,token=token,players={},botIds={},sequence=0,defeatedAt={},wishSerial={}};sessions[room.id]=session
+    local humans={}
+    for _,p in ipairs(group) do
+        if p.Parent==Players then humans[#humans+1]=p;membership[p]=session;session.players[p]=true;p:SetAttribute("ScenePhase","Transferring") end
+    end
+    -- Solo rooms deliberately receive three ordinary roster slots, not free resources or combat cheats.
+    local fullGroup={table.unpack(humans)}
+    if room.capacity==1 then
+        local need=math.max(0,4-#fullGroup)
+        for i=1,need do
+            local bot={UserId=-1000000-room.id*10-i,Name="Bot "..i,Skill=0.78,IsBot=true}
+            fullGroup[#fullGroup+1]=bot;session.botIds[#session.botIds+1]=tostring(bot.UserId)
+        end
+    end
+    label(room,#humans,"launch");sendLobby(room)
+    local ok,err=pcall(function()
+        session.world=World.create(Data,room.id,token,fullGroup,runtime)
+        local names,bots,colors,perks={},{},{},{}
+        for _,rosterPlayer in ipairs(fullGroup) do
+            local uid=tostring(rosterPlayer.UserId)
+            names[uid]=rosterPlayer.Name or ("Player "..uid)
+            bots[uid]=type(rosterPlayer)=="table" and rosterPlayer.IsBot==true
+            local color=session.world.players[uid].colour
+            colors[uid]={r=math.floor(color.R*255+.5),g=math.floor(color.G*255+.5),b=math.floor(color.B*255+.5)}
+            if typeof(rosterPlayer)=="Instance" then perks[uid]=Perks.snapshot(rosterPlayer) end
+        end
+        session.state=State.new(Data,session.world.layouts,session.world.central,session.world.territories,{names=names,bots=bots,colors=colors,perks=perks})
+        session.bots=Bots.attach(session.state,fullGroup,State)
+        World.sync(session.world,session.state)
+        for _,p in ipairs(humans) do
+            local v=session.world.players[tostring(p.UserId)]
+            -- A player can be between CharacterAdded events exactly when a
+            -- short (one-player) cabin countdown expires. Keep the session
+            -- alive and let the existing CharacterAdded hook finish the move;
+            -- missing HumanoidRootPart must never bounce a valid room to lobby.
+            if membership[p]==session and p.Parent==Players and v then
+                move(p,CFrame.new(v.home+Vector3.new(0,4,0)));conceal(p)
+                p:SetAttribute("RoundHome",v.home);p:SetAttribute("RoundCenter",session.world.center);p:SetAttribute("RoundBoundsMin",session.world.cameraMin);p:SetAttribute("RoundBoundsMax",session.world.cameraMax);p:SetAttribute("RoundModel",session.world.model.Name);p:SetAttribute("RoundToken",token);p:SetAttribute("ScenePhase","Round");send(session,p,nil)
+            else leave(p,true) end
+        end
+        if sessions[room.id]==session then label(room,#humans,"sea") end
+    end)
+    if not ok then warn("[ArmyRound] Start failed: "..tostring(err));finish(session)
+    else print("[ArmyRound] Started "..token.." players="..#humans.." bots="..#session.botIds) end
+end
+for index=1,3 do
+    local m=assert(pads:FindFirstChild("Teleporter"..index),"Missing native Teleporter")
+    local f=assert(m:FindFirstChild("BeamPart"),"Missing native BeamPart")
+    for _,o in ipairs(m:GetChildren()) do if o:IsA("BasePart") and o.Name=="EnterPart" then o.CanCollide=false end end
+    local room={id=index,model=m,floor=f,busy=false,queued={},order={},joinSerial=0,host=nil,capacity=nil,remaining=nil,lastQueueAt=os.clock()};rooms[#rooms+1]=room;styleRoom(room);label(room,0,"idle")
+end
+local function inPad(room,r)
+    local p=room.floor.CFrame:PointToObjectSpace(r.Position)
+    return math.abs(p.X)<=room.floor.Size.X/2 and math.abs(p.Z)<=room.floor.Size.Z/2 and p.Y>=-1 and p.Y<=12
+end
+local allowed={Collect=true,Expand=true,Train=true,Upgrade=true,Craft=true,Research=true,Order=true,BuyWorker=true,Sync=true,WishDraft=true,WishSubmit=true,AppendDraft=true,AppendSubmit=true,Veto=true,UseToken=true}
+local TOKEN_NAMES={AdminToken="Admin Tokens",SupplyDrop="Supply Drops"}
+local wishOps={WishDraft=true,WishSubmit=true,AppendDraft=true,AppendSubmit=true}
+local function filterPublic(player,text)
+    text=WishRules.sanitize(text)
+    if text=="" then return "" end
+    local ok,value=pcall(function()
+        local result=TextService:FilterStringAsync(text,player.UserId,Enum.TextFilterContext.PublicChat)
+        return result:GetNonChatStringForBroadcastAsync()
+    end)
+    if ok and type(value)=="string" then return WishRules.sanitize(value) end
+    return nil
+end
+Command.OnServerEvent:Connect(function(player,token,op,payload)
+    if type(op)~="string" then return end
+    -- Lobby requests are host-scoped and rate limited independently of a match.
+    if LOBBY_OPS[op] then
+        if membership[player] then return end
+        local now=os.clock()
+        if op~="LobbyLeave" and now-(lobbyRate[player] or -100)<.2 then return end
+        lobbyRate[player]=now
+    end
+    if op=="LobbyLeave" then
+        for _,room in ipairs(rooms) do if room.queued and room.queued[player] then
+            queueSuppressed[player]={room=room.id,untilTime=os.clock()+2}
+            leaveQueue(room,player)
+            local exit=room.model:FindFirstChild("LeaveHere",true)
+            move(player,exit and exit.CFrame or lobbySpawn.CFrame+Vector3.new(0,4,0))
+        end end
+        return
+    elseif op=="LobbyConfig" then
+        if type(payload)~="table" then return end
+        local rid=tonumber(payload.room);local room=rid and rooms[rid]
+        local cap=tonumber(payload.capacity)
+        if not room or room.busy or cap==nil or cap%1~=0 or cap<1 or cap>MAX_PLAYERS then return end
+        if not room.queued[player] or room.host~=player then return end
+        local ok,message=Queue.configure(room,player,cap,MAX_PLAYERS,COUNTDOWN)
+        sendLobby(room)
+        if not ok then local snapshot=lobbySnapshot(room,player);snapshot.message=message;Snapshot:FireClient(player,snapshot) end
+        return
+    end
+    if not allowed[op] then return end
+    local now=os.clock();local bucket=limits[player] or {time=now,tokens=10,sync=0,wish=0};limits[player]=bucket
+    if wishOps[op] then
+        bucket.inputTokens=math.min(12,(bucket.inputTokens or 12)+(now-(bucket.inputAt or now))*30);bucket.inputAt=now
+        if bucket.inputTokens<1 then return end;bucket.inputTokens=bucket.inputTokens-1
+    else
+        bucket.tokens=math.min(10,bucket.tokens+(now-bucket.time)*5);bucket.time=now
+        if bucket.tokens<1 then return end;bucket.tokens=bucket.tokens-1
+    end
+    local session=membership[player]
+    if not session or not session.state or type(token)~="string" or token~=session.token then return end
+    if op=="Sync" then
+        if now-bucket.sync>=0.5 then bucket.sync=now;send(session,player,nil) end
+        return
+    end
+    if type(payload)~="table" then return end
+    -- Strip all unknown/deep fields before they reach game state.
+    local clean={}
+    for _,field in ipairs({"key","kind","mode","prompt","text","eventId","target","enemy","camp","owner","choice"}) do
+        if payload[field]~=nil then
+            if type(payload[field])~="string" or #payload[field]>120 then return end
+            clean[field]=payload[field]
+        end
+    end
+    if type(payload.pos)=="table" then clean.pos={x=payload.pos.x,y=payload.pos.y,z=payload.pos.z} end
+    if payload.ids~=nil then
+        if type(payload.ids)~="table" or #payload.ids>60 then return end
+        clean.ids={};local seen={};local length=#payload.ids
+        for key in pairs(payload.ids) do if type(key)~="number" or key%1~=0 or key<1 or key>length then return end end
+        for i,id in ipairs(payload.ids) do if type(id)~="string" or #id>12 or seen[id] then return end;clean.ids[i]=id;seen[id]=true end
+    end
+    if op=="UseToken" then
+        -- The token is spent only after the round confirms the effect can happen.
+        local uid=tostring(player.UserId);local kind=clean.kind
+        if not TOKEN_NAMES[kind] then return end
+        local ok,message=State.canUseToken(session.state,uid,kind)
+        if ok then
+            if Perks.consume(player,kind) then ok,message=State.useToken(session.state,uid,kind)
+            else message="You have no "..TOKEN_NAMES[kind]..". Get more in the Admin Vault." end
+        end
+        session.sequence=session.sequence+1;send(session,player,message);return
+    end
+    if wishOps[op] and not State.canWish(session.state,tostring(player.UserId),op,clean.eventId) then return end
+    local ok,message=State.action(session.state,tostring(player.UserId),op,clean)
+    local draft=op=="WishDraft" or op=="AppendDraft"
+    if not draft or not ok then session.sequence=session.sequence+1;send(session,player,message) end
+end)
+local function added(player)
+    if addedPlayers[player] then return end;addedPlayers[player]=true
+    player.RespawnLocation=lobbySpawn;leave(player,false)
+    player.CharacterAdded:Connect(function(character)
+        task.spawn(function()
+        character:WaitForChild("HumanoidRootPart",10);character:WaitForChild("Humanoid",10)
+        if player.Character~=character or player.Parent~=Players then return end
+        local session=membership[player]
+        if session and session.world and session.world.players[tostring(player.UserId)] then
+            task.defer(function()
+                local v=session.world and session.world.players[tostring(player.UserId)]
+                if membership[player]==session and v then
+                    move(player,CFrame.new(v.home+Vector3.new(0,4,0)));conceal(player)
+                end
+            end)
+        elseif not session then
+            -- CharacterAdded can fire while launch is still constructing World/state.
+            -- Keep a queued solo session alive; launch owns the first move/conceal.
+            leave(player,false)
+        end
+        end)
+    end)
+end
+Players.PlayerAdded:Connect(added)
+Players.PlayerRemoving:Connect(function(player) for _,room in ipairs(rooms) do leaveQueue(room,player) end;leave(player,false);limits[player]=nil;addedPlayers[player]=nil;queueSuppressed[player]=nil;lobbyRate[player]=nil end)
+for _,player in ipairs(Players:GetPlayers()) do added(player) end
+local simClock,queueClock,snapshotClock=0,0,0
+RunService.Heartbeat:Connect(function(dt)
+    simClock=simClock+math.min(dt,0.5);queueClock=queueClock+dt;snapshotClock=snapshotClock+dt
+    local steps=0
+    while simClock>=0.1 and steps<5 do
+        simClock=simClock-0.1;steps=steps+1
+        for _,room in ipairs(rooms) do
+            local session=sessions[room.id]
+            if session and session.state then
+                local ok,err=pcall(function()
+                    State.step(session.state,0.1);if session.bots then Bots.step(session.bots,0.1) end
+                    for _,job in ipairs(WishRules.pending(session.state)) do
+                        local author=Players:GetPlayerByUserId(tonumber(job.uid) or 0)
+                        if not author or membership[author]~=session then
+                            WishRules.approve(session.state,job.uid,job.eventId,job.phase,nil)
+                        else
+                            task.spawn(function()
+                                local filtered=filterPublic(author,job.text)
+                                if sessions[room.id]==session and membership[author]==session then
+                                    WishRules.approve(session.state,job.uid,job.eventId,job.phase,filtered)
+                                    session.sequence=session.sequence+1
+                                    for p in pairs(session.players) do send(session,p,nil) end
+                                end
+                            end)
+                        end
+                    end
+                    local rendered,renderError=pcall(World.sync,session.world,session.state)
+                    if not rendered and os.clock()-(session.lastRenderWarning or -100)>5 then
+                        session.lastRenderWarning=os.clock();warn("[ArmyRound] Presentation retry; state preserved: "..tostring(renderError))
+                    end
+                    local eliminated={}
+                    if session.state.status=="Active" then
+                        for player in pairs(session.players) do
+                            local p=session.state.players[tostring(player.UserId)]
+                            if p and p.defeated then
+                                session.defeatedAt[player]=session.defeatedAt[player] or os.clock()
+                                if os.clock()-session.defeatedAt[player]>=5 then eliminated[#eliminated+1]=player end
+                            end
+                        end
+                    end
+                    for _,player in ipairs(eliminated) do leave(player,true) end
+                    if session.state.status=="Ended" then
+                        if not session.endedAt then session.endedAt=os.clock() end
+                        if os.clock()-session.endedAt>=Data.ResultSeconds then finish(session) end
+                    end
+                end)
+                if not ok then warn("[ArmyRound] Simulation stopped safely: "..tostring(err));finish(session) end
+            end
+        end
+    end
+    if snapshotClock>=0.3 then
+        snapshotClock=0
+        for _,session in pairs(sessions) do if session.state then
+            session.sequence=session.sequence+1
+            for player in pairs(session.players) do send(session,player,nil) end
+        end end
+    end
+    if queueClock>=0.2 then
+        local qdt=queueClock;queueClock=0
+        local list=Players:GetPlayers();table.sort(list,function(a,b) return a.UserId<b.UserId end)
+        local now=os.clock()
+        for _,player in ipairs(list) do
+            local r=not membership[player] and root(player)
+            if r and r.Position.Y<LOBBY_WATER_Y-1.5 and math.abs(r.Position.X)<1500 and math.abs(r.Position.Z)<1500 then
+                move(player,lobbySpawn.CFrame+Vector3.new(0,4,0))
+            end
+        end
+        for _,room in ipairs(rooms) do
+            if not room.busy then
+                local candidates={}
+                for _,player in ipairs(list) do
+                    local r=root(player);local inside=r and inPad(room,r)
+                    local suppressed=queueSuppressed[player]
+                    -- LEAVE blocks re-boarding for two seconds only; walking back on board afterwards re-queues.
+                    if suppressed and suppressed.room==room.id and now>=suppressed.untilTime then queueSuppressed[player]=nil;suppressed=nil end
+                    if not membership[player] and inside and not (suppressed and suppressed.room==room.id) then candidates[#candidates+1]=player end
+                end
+                local departed,rejected=Queue.reconcile(room,candidates,MAX_PLAYERS)
+                for _,player in ipairs(rejected) do
+                    local exit=room.model:FindFirstChild("LeaveHere",true)
+                    move(player,exit and exit.CFrame+Vector3.new(0,2,0) or lobbySpawn.CFrame+Vector3.new(0,4,0))
+                end
+                for _,player in ipairs(departed) do
+                    if player.Parent==Players then Snapshot:FireClient(player,{lobby={room=room.id,left=true}}) end
+                end
+                local group=Queue.advance(room,qdt,COUNTDOWN)
+                local n=playerCount(room.queued)
+                label(room,n,not room.host and "idle" or not room.capacity and "choosing" or (room.remaining or COUNTDOWN))
+                sendLobby(room)
+                if group and #group>0 then
+                    room.queued={};room.order={}
+                    -- A crash while launching must never leave a ship stuck "at sea".
+                    local launched,crash=pcall(launch,room,group)
+                    if not launched then
+                        warn("[ArmyRound] Launch crashed safely: "..tostring(crash))
+                        local session=sessions[room.id]
+                        if session then pcall(finish,session) else room.busy=false;room.host=nil;room.capacity=nil;room.remaining=nil end
+                        for _,p in ipairs(group) do if p.Parent==Players and not membership[p] then p:SetAttribute("ScenePhase","Lobby") end end
+                        label(room,0,"idle")
+                    end
+                end
+            else
+                for _,player in ipairs(list) do
+                    local r=root(player)
+                    if not membership[player] and r and inPad(room,r) then
+                        local exit=room.model:FindFirstChild("LeaveHere",true)
+                        move(player,exit and exit.CFrame+Vector3.new(0,2,0) or lobbySpawn.CFrame+Vector3.new(0,4,0))
+                    end
+                end
+            end
+        end
+    end
+end)
+print("[ArmyRound] Ready: harbour lobby, three fleets, admin rounds.")
+
