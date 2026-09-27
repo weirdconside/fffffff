@@ -246,6 +246,9 @@ def is_ancestor(a, b):
 def text_info(o):
     n = o.n
     text = n.get('Text', '')
+    if g(n, 'RichText', False):
+        import re as _re
+        text = _re.sub(r'<[^>]*>', '', text).replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
     if o.cls not in TEXT or not text.strip():
         return None
     tt = g(n, 'TextTransparency', 0)

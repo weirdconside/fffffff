@@ -8,6 +8,7 @@ local TweenService=game:GetService('TweenService')
 local C=Theme.Colors
 local Lobby={};Lobby.__index=Lobby
 local BAR_W=480
+local SEAT_COLORS={Color3.fromRGB(255,204,58),Color3.fromRGB(52,158,216),Color3.fromRGB(226,35,31),Color3.fromRGB(64,192,29),Color3.fromRGB(147,72,213),Color3.fromRGB(255,140,40)}
 local ROOM_COLORS={Color3.fromRGB(52,142,230),Color3.fromRGB(147,72,213),Color3.fromRGB(64,170,90)}
 local function make(class,parent,name,props)
     local o=Instance.new(class);o.Name=name or class
@@ -17,6 +18,9 @@ end
 local function text(parent,name,value,size,color,props)
     local o=make('TextLabel',parent,name,props);o.BackgroundTransparency=1;o.Text=value;Theme.text(o,size,color);return o
 end
+local function headline(parent,name,value,size,color,props)
+    local o=make('TextLabel',parent,name,props);o.BackgroundTransparency=1;o.Text=value;Theme.headline(o,size,color);return o
+end
 function Lobby.new(parent,uid,command)
     local self=setmetatable({uid=tostring(uid),command=command,selected=1,room=nil,state=nil},Lobby)
     local gui=make('ScreenGui',parent,'LobbyRoomPicker',{Enabled=true,ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=45,ZIndexBehavior=Enum.ZIndexBehavior.Sibling});self.gui=gui
@@ -24,8 +28,8 @@ function Lobby.new(parent,uid,command)
     local card=make('Frame',gui,'Card',{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.55),Size=UDim2.fromOffset(380,262),Visible=false,Active=true})
     Theme.skin(card,C.Panel);self.card=card;self.scale=make('UIScale',card)
     local ribbon=make('Frame',card,'Ribbon',{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.new(.5,0,0,0),Size=UDim2.fromOffset(250,40),ZIndex=6});Theme.skin(ribbon,ROOM_COLORS[1]);self.ribbon=ribbon
-    self.fleet=text(ribbon,'Room','ROOM 1',20,C.White,{Size=UDim2.fromScale(1,1),ZIndex=8})
-    text(card,'Title','CREATE ROOM',22,C.Gold,{Position=UDim2.fromOffset(18,30),Size=UDim2.new(1,-36,0,28),ZIndex=5})
+    self.fleet=headline(ribbon,'Room','ROOM 1',22,C.White,{Size=UDim2.fromScale(1,1),ZIndex=8})
+    headline(card,'Title','CREATE ROOM',26,C.Gold,{Position=UDim2.fromOffset(18,30),Size=UDim2.new(1,-36,0,28),ZIndex=5})
     text(card,'Question','HOW MANY PLAYERS?',13,C.Muted,{Position=UDim2.fromOffset(18,58),Size=UDim2.new(1,-36,0,18),ZIndex=5})
     local function button(name,label,x,y,w,h,color,size,fn)
         local b=make('TextButton',card,name,{Text=label,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),ZIndex=6});Theme.button(b,color,size);b.Activated:Connect(fn);return b
@@ -42,7 +46,7 @@ function Lobby.new(parent,uid,command)
         make('UIStroke',f,'Line',{Color=C.Ink,Thickness=2});make('UIStroke',head,'Line',{Color=C.Ink,Thickness=2})
         self.figures[i]={body=f,head=head}
     end
-    self.amount=text(card,'PlayerCount','1 PLAYER',22,C.White,{Position=UDim2.fromOffset(18,142),Size=UDim2.new(1,-36,0,26),ZIndex=5})
+    self.amount=headline(card,'PlayerCount','1 PLAYER',24,C.White,{Position=UDim2.fromOffset(18,142),Size=UDim2.new(1,-36,0,26),ZIndex=5})
     self.subtitle=text(card,'Subtitle','',13,C.Muted,{Position=UDim2.fromOffset(18,168),Size=UDim2.new(1,-36,0,18),ZIndex=5})
     self.create=button('Create','CREATE',18,196,212,50,C.Green,22,function()
         if self.room and card.Visible and not self.pending then
@@ -57,8 +61,8 @@ function Lobby.new(parent,uid,command)
     local bar=make('Frame',gui,'Status',{AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,0,68),Size=UDim2.fromOffset(BAR_W,58),Visible=false,Active=true})
     Theme.skin(bar,C.Panel);self.bar=bar;self.barScale=make('UIScale',bar)
     local chip=make('Frame',bar,'Chip',{Position=UDim2.fromOffset(8,8),Size=UDim2.fromOffset(118,42),ZIndex=5});Theme.skin(chip,ROOM_COLORS[1]);self.chip=chip
-    self.chipText=text(chip,'Room','ROOM 1',17,C.White,{Size=UDim2.fromScale(1,1),ZIndex=7})
-    self.barText=text(bar,'Text','PLAYERS 1/4',19,C.Gold,{Position=UDim2.fromOffset(134,7),Size=UDim2.new(1,-252,0,24),ZIndex=5})
+    self.chipText=headline(chip,'Room','ROOM 1',18,C.White,{Size=UDim2.fromScale(1,1),ZIndex=7})
+    self.barText=headline(bar,'Text','PLAYERS 1/4',20,C.Gold,{Position=UDim2.fromOffset(134,7),Size=UDim2.new(1,-252,0,24),ZIndex=5})
     self.barSub=text(bar,'Sub','STARTS IN 15s',13,C.Muted,{Position=UDim2.fromOffset(134,32),Size=UDim2.new(1,-252,0,18),ZIndex=5})
     local leave=make('TextButton',bar,'Leave',{Text='LEAVE',Position=UDim2.new(1,-110,0,9),Size=UDim2.fromOffset(102,40),ZIndex=6});Theme.button(leave,C.Red,18)
     leave.Activated:Connect(function() self:leave() end)
@@ -83,7 +87,7 @@ function Lobby:refresh()
     self.right.BackgroundColor3=n<6 and C.Blue or C.Dark
     for i,f in ipairs(self.figures) do
         local on=i<=n
-        local colour=on and (i==1 and C.Gold or C.White) or C.Dark
+        local colour=on and SEAT_COLORS[i] or C.Dark
         f.body.BackgroundColor3=colour;f.head.BackgroundColor3=on and Color3.fromRGB(255,221,160) or C.Dark
         f.body.BackgroundTransparency=on and 0 or .35;f.head.BackgroundTransparency=on and 0 or .35
     end

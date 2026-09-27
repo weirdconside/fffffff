@@ -45,11 +45,11 @@ section("AdminUI",function()
     local base={eventId="1",recipient="1",recipientName="Alice",recipientColor={r=200,g=100,b=50},prompt="",remaining=10,remainingExact=10,phaseElapsed=0}
     local function with(t) local o={};for k,v in pairs(base) do o[k]=v end;for k,v in pairs(t) do o[k]=v end;return o end
     admin:update(with({phase="Prompt",canType=true,ticket=true,examples={"heal my army"}}));frames(3)
-    assert(admin.hint.Visible,"hint");print("   title:",admin.title.Text)
-    admin:update(with({eventId="2",phase="Prompt",canType=false}));frames(2);print("   watching:",admin.title.Text,admin.quote.Text)
+    assert(admin.hint.Visible,"hint");assert(admin.card.Visible,"input bar");print("   kicker:",admin.kicker.Text)
+    admin:update(with({eventId="2",phase="Prompt",canType=false}));frames(2);assert(not admin.card.Visible,"watchers do not type");print("   watching:",admin.kicker.Text,admin.lines[1].Text)
     admin:update(with({eventId="2",phase="Announcement",prompt="meteor on enemies"}))
     admin:update(with({eventId="2",phase="Roulette",choice="Append",prompt="x"}));frames(10)
-    admin:update(with({eventId="2",phase="Applied",outcome="Executed",effect="EXECUTED: Meteors."}));print("   applied:",admin.title.Text)
+    admin:update(with({eventId="2",phase="Applied",outcome="Executed",effect="EXECUTED: Meteors.",quotes={{name="Alice",color={r=200,g=100,b=50},text="meteor on enemies"}}}));print("   applied:",admin.kicker.Text,admin.lines[1].Text,admin.effect.Text)
     admin:update({phase="Idle"})
 end)
 -- Transition ------------------------------------------------------------------

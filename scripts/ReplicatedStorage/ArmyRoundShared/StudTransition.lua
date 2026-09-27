@@ -68,10 +68,16 @@ function T:layout()
     for i,row in ipairs(self.rows) do row.Size=UDim2.fromOffset(d*1.25,h+6);row.Position=UDim2.fromOffset(row.Position.X.Offset,(i-1)*h-3) end
     local s=1
     if self.logo then s=self.logo:fit(v,.8,.42,.9) end
-    self.pill.Position=UDim2.new(.5,0,.45,130*s+14)
+    self.pill.Position=UDim2.new(.5,0,.45,141*s+22)
     self.pillScale.Scale=math.clamp(s*1.1,.6,1)
 end
--- letters: quick cascade in, then a hop wave on every beat with stud bits flying off
+-- BATTLE slams in, [BUT][WITH] pop, ADMIN PANEL cascades; then ADMIN PANEL hops
+-- on the beat and BATTLE on the off-beat, each landing throwing confetti.
+local function hopAt(t,start,amp,dur)
+    local u=(t-start)/dur
+    if u>=0 and u<1 then return amp*math.sin(math.pi*u) end
+    return 0
+end
 function T:step(dt)
     self.t+=dt
     local t=self.t
@@ -79,31 +85,45 @@ function T:step(dt)
     for i,d in ipairs(self.dots) do d.Position=UDim2.new(i==1 and 0 or 1,i==1 and 24 or -24,.5,-math.max(0,math.sin(t*7+i*1.6))*6) end
     if not logo then return end
     logo:step(dt)
-    local n=logo:count()
-    self.air=self.air or {}
-    for i=1,n do
-        local appear=.05+(i-1)*.045
+    self.air=self.air or {};self.popped=self.popped or {}
+    local nTop,nMain=logo:countTop(),logo:count()
+    local beatStart=.05+nMain*.04+.45
+    local function beat(i,offset,big,small)
+        if t<beatStart then return 0 end
+        local d=(i-1)*.025
+        local k=math.floor((t-beatStart-d-offset*BEAT)/BEAT)
+        if k<0 then return 0 end
+        return hopAt(t,beatStart+(k+offset)*BEAT+d,k%4==0 and big or small,.3)
+    end
+    for i=1,nTop do
+        local appear=(i-1)*.03
+        local scale=0
+        if t>=appear then local u=math.min(1,(t-appear)/.2);scale=1+1.2*(1-u)^3 end
+        local lift=beat(i,.5,16,9)
+        logo:poseTop(i,lift,scale,0)
+        local key='t'..i
+        if scale>0 and t>=appear+.18 and not self.popped[key] then self.popped[key]=true;logo:burstTop(i,5,120) end
+        if lift>2 then self.air[key]=true elseif self.air[key] and lift<=.5 then self.air[key]=nil;logo:burstTop(i,2,100) end
+    end
+    for i=1,2 do
+        local at=.2+i*.1
+        local scale=t<at and 0 or TitleLogo.backOut((t-at)/.3)
+        logo:tag(i,scale,beat(i,.5,10,6),t<at+.3 and 16*(1-(t-at)/.3) or 0)
+        if t>=at and not self.popped['g'..i] then self.popped['g'..i]=true;logo:burstTag(i,5,110) end
+    end
+    for i=1,nMain do
+        local appear=.3+(i-1)*.04
         local lift,scale,rot=0,1,0
         if t<appear then scale=0;rot=-25
         else
             local u=(t-appear)/.3
             if u<1 then scale=TitleLogo.backOut(u);rot=-25*(1-math.min(1,u*1.4)) end
-            local start0=.05+(n-1)*.045+.35               -- first beat after the cascade
-            if t>=start0 then
-                local d=(i-1)*.03
-                local k=math.floor((t-start0-d)/BEAT)
-                if k>=0 then
-                    local u2=(t-(start0+k*BEAT+d))/.3
-                    local amp=k%4==0 and 20 or 11
-                    if u2<1 then lift=amp*math.sin(math.pi*u2) end
-                end
-            end
+            lift=beat(i,0,20,11)
         end
         logo:pose(i,lift,scale,rot)
-        if t>=appear and t<appear+.02 and not (self.popped and self.popped[i]) then
-            self.popped=self.popped or {};self.popped[i]=true;logo:burst(i,4,340)
-        end
-        if lift>2 then self.air[i]=true elseif self.air[i] and lift<=.5 then self.air[i]=nil;logo:burst(i,2,260) end
+        local key='m'..i
+        if t>=appear+.05 and not self.popped[key] then self.popped[key]=true;logo:burst(i,5,120) end
+        if lift>2 then self.air[key]=true elseif self.air[key] and lift<=.5 then self.air[key]=nil;logo:burst(i,3,110) end
     end
     local beatIndex=math.floor(t/(BEAT*4))
     if beatIndex~=self.lastShine then self.lastShine=beatIndex;logo:shine(.04) end
@@ -127,7 +147,8 @@ function T:cover(title,subtitle,duration)
     self.t=0;self.popped={};self.air={};self.lastShine=nil
     if self.logo then
         self.logo:iconPose(1,0)
-        for i=1,3 do self.logo:word(i,1,0) end
+        for i=1,2 do self.logo:tag(i,0,0,0) end
+        for i=1,self.logo:countTop() do self.logo:poseTop(i,0,0,0) end
         for i=1,self.logo:count() do self.logo:pose(i,0,0,-25) end
         self.logo:spinIcon(.9)
         local s=self.logo.iconScale;self.logo.iconSlot.Visible=true

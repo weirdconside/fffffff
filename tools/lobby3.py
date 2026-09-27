@@ -355,6 +355,7 @@ def build(tree):
         place_asset(ctx, sea, ctx.sands[k % len(ctx.sands)], (x, WATER - 0.9 + k * 0.05, z), yaw=yaw_s, s=1.25, name='Beach', collide=False, box=False)
     removed = remove_overlaps(lobby)
     print('overlap pass removed', removed, 'models')
+    print('perf pass:', optimize(lobby))
     spawn_cf = at(SPAWN[0], TOP + 0.1, SPAWN[1]) * ry(-90)
     return lobby, ctx, tiles, spawn_cf
 
@@ -387,3 +388,25 @@ def remove_overlaps(lobby):
             else:
                 kept.append((lo2, hi2))
     return removed
+
+def optimize(lobby):
+    """Cheaper lobby: decoration that nobody can touch does not take part in
+    raycasts (camera, clicks) and small bits cast no shadows."""
+    keep = set()
+    for f in lobby.iter('Item'):
+        if name_of(f) in ('NativeTeleporters', 'Shop') and f.get('class') in ('Folder', 'Model'):
+            for it in f.iter('Item'): keep.add(it.get('referent'))
+    queries = shadows = 0
+    for it in lobby.iter('Item'):
+        if it.get('class') not in PARTS or it.get('referent') in keep: continue
+        cc = getp(it, 'CanCollide')
+        collide = cc is None or cc.text == 'true'
+        if not collide:
+            set_prop(it, 'CanQuery', 'bool', False); set_prop(it, 'CanTouch', 'bool', False); queries += 1
+        sz = getp(it, 'size')
+        tr = getp(it, 'Transparency')
+        small = sz is not None and max(read_v3(sz)) < 2.2
+        hidden = tr is not None and float(tr.text) >= 0.99
+        if small or hidden:
+            set_prop(it, 'CastShadow', 'bool', False); shadows += 1
+    return 'non-queryable %d, shadowless %d' % (queries, shadows)

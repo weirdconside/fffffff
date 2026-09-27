@@ -180,6 +180,8 @@ instMt.__newindex=function(o,k,v)
         return
     end
     if type(v)=="table" and v.__type=="Signal" then error("assigning signal") end
+    -- Roblox instances only have PascalCase members: a lowercase field is a bug that errors in game
+    if type(k)=="string" and k:sub(1,1):match("%l") then report("setting unknown member '"..k.."' on "..tostring(o.__class)) end
     props[k]=v
     local s=rawget(o,"__propSignals")[k];if s then s:Fire() end
 end
@@ -228,12 +230,14 @@ function tweenService:Create(o,info,props) return {Play=function() for k,v in pa
 services.TweenService=tweenService
 local runService=newInstance("RunService","RunService");function runService:IsStudio() return true end;function runService:BindToRenderStep() end;services.RunService=runService
 local textService=newInstance("TextService","TextService")
-function textService:GetTextSize(s,size,font)
+function textService:GetTextSize(s,size,font,bounds)
     local key=(type(font)=="table" and font.Name and font.Name:find("Fredoka")) and "fredoka" or "arial"
     local tbl=__GLYPHW and __GLYPHW[key]
     if not tbl then return Vector2.new(#s*size*.6,size) end
     local w=0
     for i=1,#s do local c=s:byte(i);w=w+(tbl[c-31] or 60)*size/100 end
+    local limit=type(bounds)=="table" and bounds.X or nil
+    if limit and limit>0 and w>limit then return Vector2.new(limit,size*math.ceil(w/limit)) end
     return Vector2.new(w,size)
 end
 services.TextService=textService

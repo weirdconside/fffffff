@@ -8,7 +8,7 @@ local player=Players.LocalPlayer
 local lobby=Workspace:WaitForChild("LobbyWorld",60)
 if not lobby then return end
 local RANGE=380
-local spinners,flags,sails,trees,textures,spells={},{},{},{},{},{}
+local spinners,flags,sails,textures,spells={},{},{},{},{}
 local function center(model)
     local ok,cf,size=pcall(function() return model:GetBoundingBox() end)
     if ok then return cf,size end
@@ -39,19 +39,15 @@ for i,p in ipairs(CollectionService:GetTagged("LobbySpell")) do
         spells[#spells+1]={part=p,base=p.CFrame,size=p.Size,light=p:FindFirstChildOfClass("PointLight"),seed=i*2.3}
     end
 end
-for i,m in ipairs(CollectionService:GetTagged("LobbyTree")) do
-    if m:IsA("Model") and m:IsDescendantOf(lobby) then
-        local cf,size=center(m)
-        trees[#trees+1]={model=m,base=m:GetPivot(),root=CFrame.new(cf.Position-Vector3.new(0,size.Y/2,0)),seed=i*.37}
-    end
-end
+-- Trees do not sway any more: pivoting ~100 many-part trees 20 times a
+-- second was the biggest cost in the lobby.
 local ocean=lobby:FindFirstChild("Ocean",true)
 if ocean then for _,t in ipairs(ocean:GetDescendants()) do if t:IsA("Texture") then textures[#textures+1]={texture=t,u=t.OffsetStudsU,v=t.OffsetStudsV,speed=#textures%2==0 and 1.2 or -.8} end end end
 local function near(position,cam) return (position-cam).Magnitude<RANGE end
-local clock,slow=0,0
+local clock=0
 RunService.RenderStepped:Connect(function(dt)
     if player:GetAttribute("ScenePhase")=="Round" then return end
-    clock+=dt;slow+=dt
+    clock+=dt
     local camera=Workspace.CurrentCamera;if not camera then return end
     local cam=camera.CFrame.Position
     for _,s in ipairs(spinners) do
@@ -79,13 +75,5 @@ RunService.RenderStepped:Connect(function(dt)
     end
     for _,t in ipairs(textures) do
         t.texture.OffsetStudsU=t.u+clock*t.speed;t.texture.OffsetStudsV=t.v+clock*t.speed*.5
-    end
-    if slow<1/20 then return end
-    slow=0
-    for _,tr in ipairs(trees) do
-        if tr.model.Parent and near(tr.root.Position,cam) then
-            local sway=tr.root*CFrame.Angles(math.sin(clock*1.1+tr.seed)*.018,0,math.cos(clock*.9+tr.seed)*.022)*tr.root:Inverse()
-            tr.model:PivotTo(sway*tr.base)
-        end
     end
 end)

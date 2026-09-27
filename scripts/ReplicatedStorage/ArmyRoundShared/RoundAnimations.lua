@@ -131,16 +131,25 @@ function A:pulse(position,kind)
 end
 function A:step(dt,cameraPosition)
     dt=math.clamp(dt,0,.1);self.elapsed=self.elapsed+dt
-    for model,connections in pairs(self.watched) do
-        if not model.Parent then
-            for _,connection in ipairs(connections) do connection:Disconnect() end
-            self.watched[model]=nil;self.pending[model]=nil
+    -- bookkeeping twice a second instead of every frame
+    self.sweep=(self.sweep or 0)+dt
+    if self.sweep>=.5 then
+        self.sweep=0
+        for model,connections in pairs(self.watched) do
+            if not model.Parent then
+                for _,connection in ipairs(connections) do connection:Disconnect() end
+                self.watched[model]=nil;self.pending[model]=nil
+            end
         end
     end
     local pending=self.pending;self.pending={}
     for model in pairs(pending) do self:register(model) end
-    for _,n in ipairs(self.nature) do
-        if n.object and n.object.Parent then
+    -- wind/water: 12 times a second and only near the camera (trees are many parts each)
+    self.natureClock=(self.natureClock or 0)+dt
+    local natureNow=self.natureClock>=1/12
+    if natureNow then self.natureClock=0 end
+    for _,n in ipairs(natureNow and self.nature or {}) do
+        if n.object and n.object.Parent and (not cameraPosition or (n.base.Position-cameraPosition).Magnitude<170) then
             if n.wind then
                 local sway=math.sin(self.elapsed*1.55+n.seed)*n.amplitude
                 if n.object:IsA("BasePart") then n.object.CFrame=n.base*CFrame.Angles(0,0,sway)
@@ -183,7 +192,8 @@ function A:step(dt,cameraPosition)
                             local angle=pose[v.limb] or 0
                             local joint=transformAbout(v.hinge,CFrame.Angles(angle,v.limb=="Head" and pose.head or 0,0))
                             p.CFrame=r.pose*body*joint*v.rest
-                            p.LocalTransparencyModifier=dead and death or (1-spawn)
+                            local fade=dead and death or (1-spawn)
+                            if v.fade~=fade then v.fade=fade;p.LocalTransparencyModifier=fade end
                         end
                     end
                     if r.flashUntil>self.elapsed then

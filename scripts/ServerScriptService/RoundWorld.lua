@@ -484,8 +484,18 @@ function World.sync(w,state)
         local pivot=pos+Vector3.new(0,r.foot,0)
         local pose=CFrame.lookAt(pivot,pivot+r.forward)
         -- Root/selection geometry stays authoritative; clients smooth and animate visible limbs.
-        if not r.placed or walking or not r.facing or (r.forward-r.facing).Magnitude>.001 then
-            r.model:PivotTo(pose);r.placed=true;r.facing=r.forward
+        if not r.placed or walking or r.stale or not r.facing or (r.forward-r.facing).Magnitude>.001 then
+            -- Clients draw the limbs themselves from RoundPose, so moving every
+            -- part of every unit each tick only floods replication. The click
+            -- target (root) follows every tick; the whole model ~3x a second.
+            if not r.placed or not walking or (w.elapsed-(r.fullAt or -10))>=.33 then
+                -- put the root back where the rest of the rig is, so PivotTo moves everything together
+                if r.stale and r.fullPose then r.root.CFrame=r.fullPose*r.root.PivotOffset:Inverse() end
+                r.model:PivotTo(pose);r.fullAt=w.elapsed;r.fullPose=pose;r.stale=false
+            else
+                r.root.CFrame=pose*r.root.PivotOffset:Inverse();r.stale=true
+            end
+            r.placed=true;r.facing=r.forward
         end
         r.model:SetAttribute("RoundPose",pose);r.model:SetAttribute("RoundMoving",walking)
         r.model:SetAttribute("RoundMode",u.mode);r.model:SetAttribute("RoundAttack",u.attackSerial or 0)

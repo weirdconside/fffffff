@@ -58,7 +58,7 @@ end)
 -- A sound inserted by a streamed model must not reintroduce combat effects.
 SoundService.DescendantAdded:Connect(function(object)
     if not object:IsA("Sound") then return end
-    if object.Name=="LobbyMusic" or object.Name=="RoundMusic" then return end
+    if object.Name=="LobbyMusic" or object.Name=="RoundMusic" or object.Name=="TitleMusic" or object.Name:sub(1,3)=="UI_" then return end
     object:Stop();object.Playing=false;object.Volume=0
 end)
 apply()

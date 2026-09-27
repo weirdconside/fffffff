@@ -10,6 +10,7 @@ SRC = {  # existing script name -> new source file
     'RoundBots': 'new/RoundBots.lua', 'DonationServer': 'new/DonationServer.server.lua', 'DonationCatalog': 'new/DonationCatalog.lua',
     'DonationShop': 'new/DonationShop.lua', 'DonationClient': 'new/DonationClient.client.lua', 'LobbyUI': 'new/LobbyUI.lua',
     'AdminUI': 'new/AdminUI.lua', 'RoundClient': 'new/RoundClient.client.lua', 'MusicController': 'new/MusicController.client.lua', 'StudTheme': 'new/StudTheme.lua', 'RoundWorld': 'new/RoundWorld.lua',
+    'RoundAnimations': 'new/RoundAnimations.lua', 'SceneEnvironment': 'new/SceneEnvironment.client.lua',
 }
 tree = etree.parse('orig.rbxlx')
 root = tree.getroot()
@@ -87,6 +88,9 @@ army = child(envs, 'Army')
 for n, t, v in [('ColorShift_Top', 'Color3', (140, 132, 108)), ('ColorShift_Bottom', 'Color3', (60, 60, 60)),
                 ('ExposureCompensation', 'double', -0.1), ('Brightness', 'double', 2.8)]:
     setv(army, n, t, v)
+# faster walking in the lobby (16 * 2.5); rounds freeze the character anyway
+starter = top['StarterPlayer']
+set_prop(starter, 'CharacterWalkSpeed', 'float', 40)
 # ------------------------------------------------------------------ validate references
 refs = {}
 for it in root.iter('Item'):

@@ -34,6 +34,7 @@ local function root(player)
     local c=player.Character;local h=c and c:FindFirstChildOfClass("Humanoid")
     return h and h.Health>0 and c:FindFirstChild("HumanoidRootPart") or nil
 end
+local LOBBY_WALK_SPEED=40   -- 16 * 2.5
 local function move(player,cf)
     local r=root(player);if not r then return false end
     r.AssemblyLinearVelocity=Vector3.new(0,0,0);r.AssemblyAngularVelocity=Vector3.new(0,0,0)
@@ -342,6 +343,9 @@ local function added(player)
         task.spawn(function()
         character:WaitForChild("HumanoidRootPart",10);character:WaitForChild("Humanoid",10)
         if player.Character~=character or player.Parent~=Players then return end
+        -- lobby: 2.5x the default walk speed (conceal() saves and restores it around rounds)
+        local humanoid=character:FindFirstChildOfClass("Humanoid")
+        if humanoid and not hidden[player] then humanoid.WalkSpeed=LOBBY_WALK_SPEED end
         local session=membership[player]
         if session and session.world and session.world.players[tostring(player.UserId)] then
             task.defer(function()

@@ -17,9 +17,11 @@ local function make(class,parent,name,props)
     for k,v in pairs(props or {}) do o[k]=v end
     o.Parent=parent;return o
 end
+local HEADLINES={Title=true,PassesTitle=true,TicketsTitle=true,Name=true,Amount=true,Count=true,Caption=true,Text=true}
 local function label(parent,name,text,size,color,props)
     local o=make('TextLabel',parent,name,props);o.BackgroundTransparency=1;o.Text=text
-    Theme.text(o,size,color);return o
+    if HEADLINES[name] and size>=14 then Theme.headline(o,size,color) else Theme.text(o,size,color) end
+    return o
 end
 local function round(o,r) make('UICorner',o,'Round',{CornerRadius=r or UDim.new(1,0)}) end
 local function stroke(o,color,thickness,transparency)

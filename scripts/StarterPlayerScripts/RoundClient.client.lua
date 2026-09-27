@@ -70,7 +70,7 @@ local baseBadges=BaseBadges.new(playerGui)
 -- Retain the source stud styling for action windows; remove the global hint strip.
 Theme.tree(actionGui);Theme.skin(actionPanel,Theme.Colors.Panel)
 actionGui.DisplayOrder=20
-panelTitle.TextColor3=Theme.Colors.Gold;panelInfo.TextColor3=Theme.Colors.Muted
+Theme.headline(panelTitle,20,Theme.Colors.Gold);panelInfo.TextColor3=Theme.Colors.Muted
 panelTitle.Size=UDim2.new(1,-64,0,28)
 actionPanel.Size=UDim2.fromOffset(310,258);actionPanel.Position=UDim2.new(1,-20,1,-24)
 panelInfo.Size=UDim2.new(1,-28,0,42);panelInfo.TextYAlignment=Enum.TextYAlignment.Top
@@ -85,7 +85,7 @@ local boostLayout=Instance.new("UIListLayout");boostLayout.FillDirection=Enum.Fi
 local timerChip=Instance.new("Frame");timerChip.Name="AdminTimer";timerChip.LayoutOrder=1;timerChip.Size=UDim2.fromOffset(220,40);timerChip.Parent=boostRow
 Theme.skin(timerChip,Theme.Colors.Purple)
 local timerText=Instance.new("TextLabel");timerText.Name="Caption";timerText.BackgroundTransparency=1;timerText.Size=UDim2.fromScale(1,1);timerText.ZIndex=5;timerText.Parent=timerChip
-Theme.text(timerText,15,Theme.Colors.White);timerText.Text="ADMIN PANEL IN 2:00"
+Theme.headline(timerText,17,Theme.Colors.White);timerText.Text="ADMIN PANEL IN 2:00"
 local ticketButton=Instance.new("TextButton");ticketButton.Name="Ticket";ticketButton.LayoutOrder=2;ticketButton.Size=UDim2.fromOffset(190,40);ticketButton.Text="USE TICKET";ticketButton.Visible=false;ticketButton.Parent=boostRow
 Theme.button(ticketButton,Theme.Colors.Gold,15);ticketButton.TextColor3=Theme.Colors.Ink
 ticketButton.Activated:Connect(function() if active and token then command:FireServer(token,"UseTicket",{}) end end)
@@ -95,7 +95,7 @@ for index,info in ipairs({{key="army",text="ARMY BOOST",color=Theme.Colors.Red},
     local chip=Instance.new("Frame");chip.Name=info.key;chip.LayoutOrder=10+index;chip.Size=UDim2.fromOffset(150,32);chip.Visible=false;chip.Parent=boostRow
     Theme.skin(chip,info.color)
     local caption=Instance.new("TextLabel");caption.Name="Caption";caption.BackgroundTransparency=1;caption.Size=UDim2.fromScale(1,1);caption.Text=info.text;caption.ZIndex=5;caption.Parent=chip
-    Theme.text(caption,14,Theme.Colors.Ink)
+    Theme.headline(caption,15,Theme.Colors.White)
     chips[info.key]=chip
 end
 local function ticketCount(snapshot)
@@ -113,14 +113,18 @@ local function refreshBoosts(snapshot)
     chips.army.Visible=b.army==true;chips.workers.Visible=b.workers==true;chips.shield.Visible=b.shield==true
     chips.frozen.Visible=snapshot~=nil and snapshot.frozen==true
 end
-RunService.Heartbeat:Connect(function()
+local timerClock=0
+RunService.Heartbeat:Connect(function(dt)
     if not active then return end
-    if timerInfo.queue then timerText.Text="YOUR TICKET: #"..tostring(timerInfo.queue).." IN LINE"
-    elseif timerInfo.phase~="Idle" then timerText.Text="ADMIN PANEL IS OPEN!"
+    timerClock+=dt;if timerClock<.2 then return end;timerClock=0
+    local text
+    if timerInfo.queue then text="YOUR TICKET: #"..tostring(timerInfo.queue).." IN LINE"
+    elseif timerInfo.phase~="Idle" then text="ADMIN PANEL IS OPEN!"
     elseif timerInfo.nextIn then
         local left=math.max(0,math.ceil(timerInfo.nextIn-(os.clock()-timerInfo.at)))
-        timerText.Text=("ADMIN PANEL IN %d:%02d"):format(left//60,left%60)
+        text=("ADMIN PANEL IN %d:%02d"):format(left//60,left%60)
     end
+    if text and timerText.Text~=text then timerText.Text=text end
 end)
 local actionClose=Instance.new("TextButton");actionClose.Name="Close";actionClose.Text="X";actionClose.Size=UDim2.fromOffset(28,28);actionClose.Position=UDim2.new(1,-40,0,10);actionClose.ZIndex=6;actionClose.Parent=actionPanel;Theme.button(actionClose,Theme.Colors.Red,16)
 local function resizeWindows()

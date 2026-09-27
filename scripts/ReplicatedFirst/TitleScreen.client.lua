@@ -144,7 +144,7 @@ local function fit()
     local v=viewport()
     layoutBars()
     local s=logo:fit(v,.86,.5,1)
-    lower.Position=UDim2.new(.5,0,.44,130*s+18)
+    lower.Position=UDim2.new(.5,0,.44,141*s+16)
     lowerScale.Scale=math.clamp(s*1.05,.62,1.1)
 end
 fit()
@@ -177,61 +177,92 @@ end
 local function trackLength() return (clockMode=="music" and music.TimeLength>5) and music.TimeLength or TRACK_LENGTH end
 
 -- ---------------------------------------------------------------- choreography (pure function of song time)
-local HOPS_BEFORE_DROP={HIT,WORD_TIMES[1],WORD_TIMES[2],WORD_TIMES[3],ROLL_END}
-local function letterState(i,L,first)
-    local lift,scale,rot,amp=0,1,0,0
+--  0.57 hit      BATTLE slams in letter by letter
+--  0.77          the crown icon flies in
+--  0.99 / 1.20   the [BUT] [WITH] tags pop
+--  1.50 - 2.20   ADMIN PANEL letters pop one by one
+--  2.50          silence: everything crouches and trembles
+--  2.98 drop     everything jumps; from now on ADMIN PANEL hops on the beat
+--                and BATTLE answers on the off-beat, confetti on every landing
+local TOP_GAP=.035
+local TAG_TIMES={.99,1.20}
+local function hop(L,start,amp,dur)
+    local u=(L-start)/dur
+    if u>=0 and u<1 then return amp*math.sin(math.pi*u),amp end
+    return 0,0
+end
+local function crouch(L,i)
+    if L>=CROUCH and L<DROP then
+        local u=(L-CROUCH)/(DROP-CROUCH)
+        return -7*math.sin(u*math.pi/2),math.sin(L*70+i*1.7)*2*u
+    end
+    return 0,0
+end
+-- beat hops after the drop; offset 0 = on the beat, .5 = off-beat
+local function beatHop(L,i,offset,big,small,first)
+    local d=(i-1)*.022
+    local k=math.floor((L-DROP-d-offset*BEAT)/BEAT)
+    if k<0 then return 0,0 end
+    local start=DROP+(k+offset)*BEAT+d
+    local amp=(k==0 and offset==0) and big*1.6 or (k%4==0 and big or small)
+    return hop(L,start,amp,(k==0 and offset==0) and .46 or .30)
+end
+local function mainState(i,L,first)
     local appear=LETTERS_START+(i-1)*LETTER_GAP
     if first and L<appear then return 0,0,-25,0 end
-    if first and L<appear+.34 then
-        local u=(L-appear)/.34
-        scale=backOut(u);rot=-25*(1-math.min(1,u*1.4))
-    end
-    local d=(i-1)*.022
-    if L>=DROP then
-        local k=math.floor((L-DROP-d)/BEAT)
-        if k>=0 then
-            local start=DROP+k*BEAT+d
-            amp=k==0 and 40 or (k%4==0 and 22 or 12)
-            local dur=k==0 and .46 or .30
-            local u=(L-start)/dur
-            if u<1 then lift=amp*math.sin(math.pi*u);scale*=1+.07*math.sin(math.pi*u) else amp=0 end
-        end
-    elseif L>=CROUCH then
-        -- anticipation in the silence: the word sinks and trembles
-        local u=(L-CROUCH)/(DROP-CROUCH)
-        lift=-7*math.sin(u*math.pi/2);rot=math.sin(L*70+i*1.7)*2*u
-    elseif not first then
-        -- later loops: the intro hits make the finished word jump
-        for h=#HOPS_BEFORE_DROP,1,-1 do
-            local start=HOPS_BEFORE_DROP[h]+d
-            if L>=start then
-                local a=h==1 and 30 or 10
-                local u=(L-start)/.32
-                if u<1 then lift=a*math.sin(math.pi*u);amp=a end
-                break
-            end
+    local scale,rot=1,0
+    if first and L<appear+.34 then local u=(L-appear)/.34;scale=backOut(u);rot=-25*(1-math.min(1,u*1.4)) end
+    if L>=DROP then local lift,amp=beatHop(L,i,0,22,12,first);return lift,scale*(1+.0025*lift),rot,amp end
+    local c,tr=crouch(L,i)
+    if c~=0 then return c,scale,tr,0 end
+    if not first then
+        for _,t in ipairs({ROLL_END,WORD_TIMES[3],WORD_TIMES[2],WORD_TIMES[1]}) do
+            if L>=t+(i-1)*.022 then local lift,amp=hop(L,t+(i-1)*.022,10,.3);return lift,scale,rot,amp end
         end
     end
-    return lift,scale,rot,amp
+    return 0,scale,rot,0
+end
+local function topState(i,L,first)
+    local appear=HIT+(i-1)*TOP_GAP
+    if first and L<appear then return 0,0,0,0 end
+    local scale=1
+    if first and L<appear+.22 then local u=(L-appear)/.22;scale=1+1.3*(1-u)^3 end   -- slams down from big
+    if L>=DROP and L<DROP+.46+(i-1)*.022 then local lift,amp=hop(L,DROP+(i-1)*.022,36,.46);return lift,scale,0,amp end   -- the drop: both rows jump together
+    if L>=DROP then local lift,amp=beatHop(L,i,.5,18,10,first);return lift,scale,0,amp end
+    local c,tr=crouch(L,i+20)
+    if c~=0 then return c,scale,tr,0 end
+    local lift,amp=hop(L,ROLL_END+(i-1)*.03,12,.3)
+    if lift==0 and not first then lift,amp=hop(L,HIT+(i-1)*.03,30,.36) end
+    return lift,scale,0,amp
+end
+local function tagState(i,L,first)
+    local t=TAG_TIMES[i]
+    if first and L<t then return 0,0,0 end
+    local scale,wob=1,0
+    if first and L<t+.3 then local u=(L-t)/.3;scale=backOut(u);wob=18*(1-u) end
+    if L>=DROP then local lift=beatHop(L,i,.5,14,8,first);return scale,lift,math.sin(L*9+i)*2 end
+    local c=crouch(L,i+40);if c~=0 then return scale,c,0 end
+    if not first then local lift=hop(L,t,10,.3);return scale,lift,wob end
+    return scale,0,wob
 end
 local lastL=-1
-local airborne={}
+local airborne,airTop,airTag,landed={},{},{},{}
 local loaderShown,readyAt=false,nil
 local function drive(song,dt)
     local len=trackLength()
     local first=song<len
     local L=song%len
-    -- one-shot events inside the loop
     local function crossed(e) return (lastL<e and L>=e) or (L<lastL and (e<=L or e>lastL)) end
     if lastL>=0 then
         if crossed(HIT) then
-            logo:spinIcon(BEAT*3)
+            logo:shake(first and 9 or 6)
             if not first then flash.BackgroundTransparency=.6 end
         end
+        if crossed(WORD_TIMES[1]) then logo:spinIcon(BEAT*3) end
+        for i,t in ipairs(TAG_TIMES) do if crossed(t) then logo:burstTag(i,6,120) end end
         if crossed(DROP) then
             flash.BackgroundTransparency=.45
-            logo:shine(.045)
-            for i=1,LETTERS do logo:burst(i,3,420) end
+            logo:shine(.04);logo:shake(12)
             if not loaderShown then loaderShown=true;readyAt=os.clock()+.25 end
             tween(credits,.6,{TextTransparency=.25})
         end
@@ -243,27 +274,38 @@ local function drive(song,dt)
     lastL=L
     flash.BackgroundTransparency=math.min(1,flash.BackgroundTransparency+dt*1.6)
     -- icon
-    if first and L<HIT then logo:iconPose(0,0)
-    elseif first and L<HIT+.7 then local u=(L-HIT)/.7;logo:iconPose(backOut(u),backOut(u))
+    local iconAt=WORD_TIMES[1]
+    if first and L<iconAt then logo:iconPose(0,0)
+    elseif first and L<iconAt+.7 then local u=(L-iconAt)/.7;logo:iconPose(backOut(u),backOut(u))
     else
         local pulse=0
         if L>=DROP then local ph=((L-DROP)/BEAT)%1;pulse=.07*(1-ph)^3 end
         logo:iconPose(1,1+pulse)
     end
-    -- BATTLE / BUT / WITH
-    for i,t in ipairs(WORD_TIMES) do
-        if first and L<t then logo:word(i,0,0)
-        elseif first and L<t+.3 then local u=(L-t)/.3;logo:word(i,backOut(u),14*(1-math.min(1,u)))
-        else logo:word(i,1,0) end
+    -- BATTLE
+    for i=1,logo:countTop() do
+        local lift,scale,rot,amp=topState(i,L,first)
+        logo:poseTop(i,lift,scale,rot)
+        if first and scale>0 and not landed[i] and L>=HIT+(i-1)*TOP_GAP+.2 then landed[i]=true;logo:burstTop(i,7,130) end
+        if lift>2 and not airTop[i] then airTop[i]=amp
+        elseif lift<=.5 and airTop[i] then local a=airTop[i];airTop[i]=nil;logo:burstTop(i,a>=16 and 4 or 2,110) end
     end
-    -- the big letters: pop in, crouch, then hop on every beat with bits flying off
+    -- [BUT] [WITH]
+    for i=1,2 do
+        local scale,lift,rot=tagState(i,L,first)
+        logo:tag(i,scale,lift,rot)
+        if lift>2 and not airTag[i] then airTag[i]=true elseif lift<=.5 and airTag[i] then airTag[i]=nil;logo:burstTag(i,2,90) end
+    end
+    -- ADMIN PANEL
     for i=1,LETTERS do
-        local lift,scale,rot,amp=letterState(i,L,first)
+        local lift,scale,rot,amp=mainState(i,L,first)
         logo:pose(i,lift,scale,rot)
+        local appear=LETTERS_START+(i-1)*LETTER_GAP
+        if first and not landed[100+i] and L>=appear+.05 then landed[100+i]=true;logo:burst(i,7,130) end
         if lift>2 and not airborne[i] then airborne[i]=amp
         elseif lift<=.5 and airborne[i] then
             local a=airborne[i];airborne[i]=nil
-            logo:burst(i,a>=30 and 6 or (a>=20 and 4 or 2),220+a*7)
+            logo:burst(i,a>=30 and 7 or (a>=20 and 5 or 3),a>=30 and 150 or 115)
         end
     end
     -- bricks glide in one after another, punch on the drop, breathe on the beat
@@ -297,7 +339,8 @@ local frameConnection
 local function exit()
     if finished or not ready then return end;finished=true;stage="exit"
     tween(pillScale,.12,{Scale=1.12},Enum.EasingStyle.Quad);task.delay(.12,function() tween(pillScale,.18,{Scale=.9}) end)
-    for i=1,LETTERS do logo:burst(i,4,380) end
+    for i=1,LETTERS do logo:burst(i,4,150) end
+    for i=1,logo:countTop() do logo:burstTop(i,4,150) end
     task.wait(.35)
     local v=viewport();local d=math.sqrt(v.X*v.X+v.Y*v.Y)*1.15
     wipe.Size=UDim2.fromOffset(d,d);wipe.Visible=true
