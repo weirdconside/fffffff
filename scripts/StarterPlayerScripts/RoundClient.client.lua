@@ -46,10 +46,19 @@ local currentTarget=nil
 -- signal handles buttons, but world taps and camera drags need an explicit
 -- path because mobile devices do not emit MouseButton1/MouseMovement.
 local touchId,touchStart,touchLast,touchMoved,touchStartedAt,touchOverGui=nil,nil,nil,false,0,nil
-local touchPanThreshold=10
+local touchPanThreshold=16
 -- Two-finger pinch zooms the round camera on phones and tablets.
 local touchCount,pinching,pinchHeight,pinchDistance=0,false,48,nil
 local fingers={}
+local touchMax=0
+local function gone(input)
+    local s=input.UserInputState
+    return s==Enum.UserInputState.End or s==Enum.UserInputState.Cancel
+end
+local function resetTouch()
+    touchId=nil;touchStart=nil;touchLast=nil;touchMoved=false;touchOverGui=nil;touchMax=0
+    fingers={};touchCount=0;pinching=false;pinchDistance=nil
+end
 -- Forward declarations: the contextual panel is defined before input helpers.
 local send, costText, tell
 local lastKind="Barbarian"
@@ -127,23 +136,38 @@ RunService.Heartbeat:Connect(function(dt)
     if text and timerText.Text~=text then timerText.Text=text end
 end)
 local actionClose=Instance.new("TextButton");actionClose.Name="Close";actionClose.Text="X";actionClose.Size=UDim2.fromOffset(28,28);actionClose.Position=UDim2.new(1,-40,0,10);actionClose.ZIndex=6;actionClose.Parent=actionPanel;Theme.button(actionClose,Theme.Colors.Red,16)
+local actionFit=Instance.new("UIScale");actionFit.Name="Fit";actionFit.Parent=actionPanel
+local boostFit=Instance.new("UIScale");boostFit.Name="Fit";boostFit.Parent=boostRow
+Theme.safe(actionGui);Theme.safe(boostGui)
 local function resizeWindows()
     local camera=Workspace.CurrentCamera;if not camera then return end
     local viewport=camera.ViewportSize
     Theme.layoutHUD(hud,viewport)
     hud.Left.Visible=not (viewport.X<650 and actionPanel.Visible)
+    -- top chips: shrink to the width that is actually free
+    local content=0
+    for _,o in ipairs(boostRow:GetChildren()) do if o:IsA("GuiObject") and o.Visible then content+=o.Size.X.Offset+8 end end
+    local boostScale=math.clamp((viewport.X-24)/math.max(1,content),.55,1)
+    if viewport.Y<420 then boostScale=math.min(boostScale,.8) end
+    boostFit.Scale=boostScale
+    boostRow.Position=UDim2.new(.5,0,0,viewport.Y<420 and 52 or 64)
+    -- admin panel captions start right under the chips
+    adminUI:setTop(boostRow.Position.Y.Offset+44*boostScale+10)
     -- Keep the contextual panel usable on narrow phones.  The old fixed
     -- 310px panel was clipped on portrait displays and intercepted taps near
     -- the screen edge.
     if viewport.X<600 then
+        actionFit.Scale=1
         actionPanel.AnchorPoint=Vector2.new(.5,1)
         actionPanel.Position=UDim2.new(.5,0,1,-12)
-        actionPanel.Size=UDim2.new(1,-20,0,220)
+        actionPanel.Size=UDim2.new(1,-20,0,math.min(220,viewport.Y*.55))
         actionButtons.Size=UDim2.new(1,-24,1,-96)
         actionLayout.CellSize=UDim2.new(.5,-8,0,38)
     else
+        -- never taller than ~60% of the screen and never wider than ~42% of it
+        actionFit.Scale=math.clamp(math.min((viewport.Y-140)/258,(viewport.X*.42)/310),.55,1)
         actionPanel.AnchorPoint=Vector2.new(1,1)
-        actionPanel.Position=UDim2.new(1,-20,1,-24)
+        actionPanel.Position=UDim2.new(1,-12,1,-12)
         actionPanel.Size=UDim2.fromOffset(310,258)
         actionButtons.Size=UDim2.new(1,-24,1,-96)
         actionLayout.CellSize=UDim2.fromOffset(139,43)
@@ -245,9 +269,11 @@ local function classify(object)
         o=o.Parent
     end
 end
+-- Coordinates: InputObject.Position (touch) is in GUI space (below the top bar
+-- inset); UIS:GetMouseLocation() is in viewport space (includes the inset).
 local function overButton(x,y)
     local p
-    if x and y then p=Vector2.new(x,y) else p=UIS:GetMouseLocation() end
+    if x and y then p=Vector2.new(x,y) else p=UIS:GetMouseLocation()-GuiService:GetGuiInset() end
     for _,o in ipairs(playerGui:GetGuiObjectsAtPosition(p.X,p.Y)) do
         local inRoot=function(root) return root and (o==root or o:IsDescendantOf(root)) end
         if o.Visible and (o:IsA("GuiButton") or o:IsA("TextBox") or inRoot(hud.Left) or inRoot(actionPanel) or inRoot(adminUI.card) or inRoot(lobbyPicker.card)) then return true end
@@ -262,8 +288,9 @@ local function castAt(x,y)
     end
     local camera=Workspace.CurrentCamera
     if not currentWorld or not camera then return nil end
-    local pos=(x and y) and Vector2.new(x,y) or UIS:GetMouseLocation()
-    local ray=camera:ViewportPointToRay(pos.X,pos.Y)
+    local ray
+    if x and y then ray=camera:ScreenPointToRay(x,y)          -- touch: GUI-space point
+    else local m=UIS:GetMouseLocation();ray=camera:ViewportPointToRay(m.X,m.Y) end
     local params=RaycastParams.new();params.FilterType=Enum.RaycastFilterType.Include
     params.FilterDescendantsInstances={currentWorld}
     return Workspace:Raycast(ray.Origin,ray.Direction*2500,params)
@@ -354,6 +381,10 @@ local function phase()
             home=newHome;lower=newMin;upper=newMax;focus=home;height=48
             if animation then animation:destroy();animation=nil end
             currentWorld=nil;hoverClock=0;syncClock=0
+            -- the round is played by tapping the map: the walk thumbstick and jump button
+            -- would only swallow taps in the corners of the screen
+            pcall(function() GuiService.TouchControlsEnabled=false end)
+            resetTouch()
             CAS:BindActionAtPriority("ArmyRoundMovement",movementAction,false,3000,
                 Enum.KeyCode.W,Enum.KeyCode.A,Enum.KeyCode.S,Enum.KeyCode.D,
                 Enum.KeyCode.Up,Enum.KeyCode.Down,Enum.KeyCode.Left,Enum.KeyCode.Right,Enum.KeyCode.Space)
@@ -370,6 +401,8 @@ local function phase()
         sailTransition("BACK TO THE LOBBY","Step on a square to play again",.7)
         selectedUnits={};selectedBuilding=nil;rallyNext=false
         showHover(nil);restoreCamera();updateResources(nil)
+        pcall(function() GuiService.TouchControlsEnabled=true end)
+        resetTouch()
     else
         hud.Enabled=false
     end
@@ -438,6 +471,11 @@ end)
 -- the map sends the army there (the mobile equivalent of right click).  UI
 -- touches are left to GuiButton.Activated and never leak into the world.
 UIS.TouchStarted:Connect(function(input,processed)
+    -- a finger whose "ended" event was swallowed (system gesture, notification...)
+    -- must not turn every later tap into a pinch
+    for f in pairs(fingers) do if gone(f) then fingers[f]=nil end end
+    if touchId and gone(touchId) then touchId=nil;touchStart=nil;touchLast=nil;touchOverGui=nil end
+    if pinching and next(fingers)==nil then pinching=false;pinchDistance=nil end
     fingers[input]=input.Position;touchCount=0;for _ in pairs(fingers) do touchCount+=1 end
     if touchCount>=2 then
         -- a second finger turns the gesture into a pinch: no pan, no tap
@@ -447,7 +485,7 @@ UIS.TouchStarted:Connect(function(input,processed)
     if not active or processed or blockedInput() or touchId then return end
     local p=input.Position
     touchId=input;touchStart=Vector2.new(p.X,p.Y);touchLast=touchStart
-    touchMoved=false;touchStartedAt=os.clock()
+    touchMoved=false;touchStartedAt=os.clock();touchMax=0
     touchOverGui=overButton(p.X,p.Y)
 end)
 UIS.TouchMoved:Connect(function(input,processed)
@@ -467,7 +505,8 @@ UIS.TouchMoved:Connect(function(input,processed)
     local p=input.Position;local now=Vector2.new(p.X,p.Y)
     local delta=now-touchLast;touchLast=now
     if touchOverGui then return end
-    if (now-touchStart).Magnitude>=touchPanThreshold then touchMoved=true end
+    touchMax=math.max(touchMax,(now-touchStart).Magnitude)
+    if touchMax>=touchPanThreshold then touchMoved=true end
     if not touchMoved then return end
     local camera=Workspace.CurrentCamera
     local pixels=camera and camera.ViewportSize.Y or 720
@@ -484,10 +523,15 @@ UIS.TouchEnded:Connect(function(input,processed)
     local p=input.Position;local wasGui=touchOverGui
     local duration=os.clock()-touchStartedAt
     touchId=nil;touchStart=nil;touchLast=nil;touchOverGui=nil
-    if processed or not active or blockedInput() or wasGui then return end
-    if touchMoved then return end
+    if not active or blockedInput() or wasGui then return end
+    -- a quick tap with a little finger wobble is still a tap
+    if touchMoved and not (duration<.3 and touchMax<30) then return end
     local hit=castAt(p.X,p.Y)
-    if duration>=.55 then order(hit) else activate(hit) end
+    local target=hit and classify(hit.Instance)
+    local clickable=target and (target.kind=="Building" or target.kind=="Expand" or target.kind=="Base"
+        or (target.kind=="Unit" and target.owner==tostring(player.UserId)))
+    -- holding on empty ground (or an enemy) sends the army; holding on a house still opens it
+    if duration>=.55 and not clickable then order(hit) else activate(hit) end
 end)
 UIS.InputEnded:Connect(function(input)
     if input.UserInputType==Enum.UserInputType.MouseButton3 then drag=false end
@@ -495,8 +539,7 @@ UIS.InputEnded:Connect(function(input)
 end)
 UIS.WindowFocusReleased:Connect(function()
     windowFocused=false;motion={};drag=false
-    touchId=nil;touchStart=nil;touchLast=nil;touchMoved=false;touchOverGui=nil
-    fingers={};touchCount=0;pinching=false;pinchDistance=nil
+    resetTouch()
 end)
 UIS.WindowFocused:Connect(function() windowFocused=true end)
 UIS.InputChanged:Connect(function(input,processed)

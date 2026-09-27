@@ -21,6 +21,8 @@ section("DonationShop",function()
     shop:setAvailable(false);shop:setAvailable(true);shop:setIntro(true);shop:setIntro(false);shop:closeShop()
     assert(shop.cards.VIP.buy.Text=="OWNED",shop.cards.VIP.buy.Text);assert(shop.cards.Admin.buy.Text:find("TEST"),shop.cards.Admin.buy.Text)
     assert(shop.wallet.Text=="3",shop.wallet.Text)
+    shop:applyState({passes={VIP=true,Admin=true,Owner=true},tokens={Ticket=5},owner=true})
+    assert(shop.cards.Ticket7.buy.Text=="FREE" and shop.cards.Admin.buy.Text=="OWNED","owner shop buttons")
 end)
 -- Lobby picker ----------------------------------------------------------------
 section("LobbyUI",function()

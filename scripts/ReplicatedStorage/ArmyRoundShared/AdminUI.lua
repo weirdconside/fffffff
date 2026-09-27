@@ -39,6 +39,7 @@ end
 function Admin.new(parent,send)
     local self=setmetatable({event=nil,phase='Idle',send=send,received=0,elapsed=0,remaining=0,pending=false,active=true,lines={},plain={},typeFrom=nil},Admin)
     local gui=make('ScreenGui',parent,'AdminSequence',{ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=70,Enabled=false,ZIndexBehavior=Enum.ZIndexBehavior.Sibling});self.gui=gui
+    Theme.safe(gui)
     -- caption column (top centre, below the HUD chips)
     local column=make('Frame',gui,'Caption',{BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,0,118),Size=UDim2.fromOffset(WIDTH,300),ZIndex=10})
     self.column=column;self.scale=make('UIScale',column,'Fit')
@@ -230,8 +231,9 @@ function Admin:render()
     local camera=Workspace.CurrentCamera
     if camera then
         local v=camera.ViewportSize
-        self.scale.Scale=math.clamp(math.min((v.X-24)/WIDTH,(v.Y*.6)/math.max(120,self.column.Size.Y.Offset)),.42,1)
-        self.column.Position=UDim2.new(.5,0,0,math.clamp(v.Y*.14,62,118))
+        local top=self.top or math.clamp(v.Y*.14,62,118)
+        self.scale.Scale=math.clamp(math.min((v.X-24)/WIDTH,(v.Y-top-12)/math.max(120,self.column.Size.Y.Offset+40)),.4,1)
+        self.column.Position=UDim2.new(.5,0,0,self.top or math.clamp(v.Y*.14,62,118))
     end
     local age=math.max(0,os.clock()-self.received)
     local left=tostring(math.max(0,math.ceil(self.remaining-age)))
@@ -259,5 +261,7 @@ function Admin:render()
         self.strip.Position=UDim2.fromOffset(center-(index-1)*216*eased,0)
     end
 end
+-- the round HUD tells us where its top chips end, so captions never cover them
+function Admin:setTop(y) self.top=y end
 function Admin:destroy()self:reset();self.connection:Disconnect();self.manual:destroy();self.gui:Destroy()end
 return Admin

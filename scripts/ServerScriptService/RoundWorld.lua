@@ -75,6 +75,14 @@ local function placeResource(template,cf)
     m:PivotTo(cf+Vector3.new(0,offset,0))
     return m
 end
+-- The plot squares are thin tiles: give them a taller invisible tap target
+-- so fingers (and the mouse at a low camera angle) hit them every time.
+local function tapTarget(marker)
+    local hit=Instance.new("Part");hit.Name="RoundHitbox";hit.Anchored=true;hit.Transparency=1
+    hit.CanCollide=false;hit.CanTouch=false;hit.CanQuery=true;hit.CastShadow=false
+    hit.Size=Vector3.new(marker.Size.X+2.5,3,marker.Size.Z+2.5)
+    hit.CFrame=marker.CFrame*CFrame.new(0,1.4,0);hit.Parent=marker
+end
 function World.create(data,roomId,token,group,runtime)
     local w={data=data,players={},units={},unitFolder=nil,central={},layouts={},territories={},territoryModels={},names={},token=token,deadUnits={}}
     local m=Instance.new("Model");m.Name="ArmyRound_"..token;w.model=m
@@ -178,7 +186,7 @@ function World.create(data,roomId,token,group,runtime)
             local gate=assets.Expand:Clone();physical(gate,true);gate.Name="BuildBridge"
             gate.CFrame=CFrame.new(v.home:Lerp(nearest,0.26)+Vector3.new(0,0.07,0))*v.rotation
             gate.CanCollide=false;gate.CanQuery=true;gate:SetAttribute("RoundOwner",uid);gate:SetAttribute("RoundExpansion","BRIDGE")
-            gate.Parent=v.expandFolder;v.bridgeGate=gate
+            gate.Parent=v.expandFolder;v.bridgeGate=gate;tapTarget(gate)
             sourceLabel(gate,"BRIDGE",sourceCost(data,data.BridgeCost))
             deck.CanCollide=true;deck.CanQuery=true;deck.CanTouch=false
             w.central["Bridge:"..uid]=point(midpoint)
@@ -325,7 +333,7 @@ local function showExpansions(w,uid,p)
             local marker=assets.Expand:Clone();physical(marker,true);marker.Name="Expand_"..key
             marker.CFrame=CFrame.new(pos)*v.rotation;marker.CanCollide=false;marker.CanQuery=true
             marker:SetAttribute("RoundOwner",uid);marker:SetAttribute("RoundExpansion",key)
-            marker.Parent=v.expandFolder
+            marker.Parent=v.expandFolder;tapTarget(marker)
             local label=sourceLabel(marker,key,sourceCost(w.data,d.cost));if label then label.Enabled=false end
             v.expand[key]=marker
         elseif not available and v.expand[key] then v.expand[key]:Destroy();v.expand[key]=nil end

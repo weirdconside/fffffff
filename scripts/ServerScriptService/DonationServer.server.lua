@@ -39,6 +39,12 @@ local function readTokens(data,s)
     if type(data)=='table' and tonumber(data.tipped) then s.tipped=math.max(0,math.floor(tonumber(data.tipped))) end
 end
 local function key(p) return 'u:'..p.UserId end
+local function isOwner(p)
+    local name=string.lower(p.Name)
+    for _,n in ipairs(Catalog.Owners or {}) do if string.lower(n)==name then return true end end
+    for _,id in ipairs(Catalog.OwnerUserIds or {}) do if tonumber(id)==p.UserId then return true end end
+    return false
+end
 local function save(p)
     local s=sessions[p]
     if not s or not s.loaded or not store or not s.dirty then return true end
@@ -61,16 +67,41 @@ Perks.persist=save
 local function publicState(p,message)
     local s=sessions[p];if not s then return end
     Perks.refresh(p)
-    remote:FireClient(p,'State',{passes=s.passes,tokens=s.tokens,tipped=s.tipped,studio=STUDIO,message=message})
+    remote:FireClient(p,'State',{passes=s.passes,tokens=s.tokens,tipped=s.tipped,studio=STUDIO,owner=s.owner==true,message=message})
 end
--- Lobby-only name plate for pass owners (ADMIN wins over VIP).
+-- Lobby-only name plate for pass owners (OWNER > ADMIN > VIP).
 local PLATES={Admin={text='ADMIN',color=Color3.fromRGB(255,90,80)},VIP={text='VIP',color=Color3.fromRGB(90,230,140)}}
+local FREDOKA=Font.new('rbxasset://fonts/families/FredokaOne.json',Enum.FontWeight.Bold,Enum.FontStyle.Normal)
+-- Big chunky "OWNER" over the head: gold letters with an ink outline, a dark
+-- drop shadow and a crown. Sized in studs so it reads like part of the world.
+local function ownerPlate(folder,head)
+    local tag=Instance.new('BillboardGui');tag.Name='RankTag';tag.Adornee=head;tag.Size=UDim2.new(8,0,3,0);tag.StudsOffset=Vector3.new(0,3.6,0)
+    tag.MaxDistance=180;tag.AlwaysOnTop=true;tag.LightInfluence=0;tag:SetAttribute('OwnerTag',true);tag.Parent=folder
+    local crown=Instance.new('TextLabel');crown.Name='Crown';crown.BackgroundTransparency=1;crown.Size=UDim2.fromScale(1,.36);crown.Text=utf8.char(0x1F451)
+    crown.TextScaled=true;crown.Parent=tag
+    local shadow=Instance.new('TextLabel');shadow.Name='Shadow';shadow.BackgroundTransparency=1;shadow.Position=UDim2.fromScale(.012,.4);shadow.Size=UDim2.fromScale(1,.6)
+    shadow.FontFace=FREDOKA;shadow.TextScaled=true;shadow.Text='OWNER';shadow.TextColor3=Color3.fromRGB(140,40,10);shadow.Parent=tag
+    local ss=Instance.new('UIStroke');ss.Color=Color3.fromRGB(34,27,20);ss.Thickness=3;ss.Parent=shadow
+    local face=Instance.new('TextLabel');face.Name='Face';face.BackgroundTransparency=1;face.Position=UDim2.fromScale(0,.35);face.Size=UDim2.fromScale(1,.6)
+    face.FontFace=FREDOKA;face.TextScaled=true;face.Text='OWNER';face.TextColor3=Color3.new(1,1,1);face.Parent=tag
+    local fs=Instance.new('UIStroke');fs.Color=Color3.fromRGB(34,27,20);fs.Thickness=3.5;fs.Parent=face
+    local shine=Instance.new('UIGradient');shine.Name='Shine';shine.Rotation=90
+    shine.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(255,244,160)),ColorSequenceKeypoint.new(.45,Color3.fromRGB(255,204,58)),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(255,120,30))})
+    shine.Parent=face
+end
 local function cosmetic(p)
     local c=p.Character;if not c then return end
     local old=c:FindFirstChild('ShopCosmetic');if old then old:Destroy() end
     if p:GetAttribute('ScenePhase')=='Round' then return end
+    local s=sessions[p]
+    local head=c:FindFirstChild('Head');if not head then return end
+    if s and s.owner then
+        local folder=Instance.new('Folder');folder.Name='ShopCosmetic';folder.Parent=c
+        ownerPlate(folder,head);return
+    end
     local style=(Perks.has(p,'Admin') and PLATES.Admin) or (Perks.has(p,'VIP') and PLATES.VIP)
-    local head=c:FindFirstChild('Head');if not style or not head then return end
+    if not style then return end
     local folder=Instance.new('Folder');folder.Name='ShopCosmetic';folder.Parent=c
     local tag=Instance.new('BillboardGui');tag.Name='RankTag';tag.Adornee=head;tag.Size=UDim2.fromOffset(96,26);tag.StudsOffset=Vector3.new(0,2.6,0)
     tag.MaxDistance=90;tag.AlwaysOnTop=true;tag.Parent=folder
@@ -98,7 +129,13 @@ local function onPlayer(p)
         s.loaded=true
     end
     if p.Parent~=Players then sessions[p]=nil;return end
-    checkPasses(p);Perks.attach(p,s);publicState(p)
+    checkPasses(p)
+    if isOwner(p) then
+        -- owners own every pass and get every ticket pack for free
+        s.owner=true;s.passes.Owner=true
+        for _,item in ipairs(Catalog.passes()) do s.passes[item.key]=true end
+    end
+    Perks.attach(p,s);publicState(p)
     p.CharacterAdded:Connect(function() task.wait(.4);cosmetic(p) end)
     p:GetAttributeChangedSignal('ScenePhase'):Connect(function() cosmetic(p) end)
     if p.Character then cosmetic(p) end
@@ -115,6 +152,31 @@ local function studioGrant(p,item)
     if g.token then s.tokens[g.token]=(s.tokens[g.token] or 0)+(g.amount or 1) end
     publicState(p,'STUDIO TEST: '..item.title..' granted.')
 end
+-- Owners: tickets are added for free, saved atomically like a real purchase.
+local function ownerGrant(p,item)
+    local s=sessions[p]
+    if item.kind=='Pass' then return grantPass(p,item,'OWNER: '..item.title..' - FREE!') end
+    local g=item.grant or {}
+    if not g.token then return publicState(p) end
+    if store then
+        local ok,result=pcall(function()
+            return store:UpdateAsync(key(p),function(old)
+                old=type(old)=='table' and old or {}
+                old.tokens=type(old.tokens)=='table' and old.tokens or {}
+                old.tokens[g.token]=math.min(9999,(tonumber(old.tokens[g.token]) or 0)+(g.amount or 1))
+                old.version=2;return old
+            end)
+        end)
+        if not ok or type(result)~='table' then return publicState(p,'Could not save, try again.') end
+        local before={};for k,v in pairs(s.tokens) do before[k]=v end
+        readTokens(result,s)
+        if s.dirty then s.tokens[g.token]=math.min(s.tokens[g.token],(before[g.token] or 0)+(g.amount or 1)) end
+        s.loaded=true
+    else
+        s.tokens[g.token]=math.min(9999,(s.tokens[g.token] or 0)+(g.amount or 1))
+    end
+    publicState(p,'OWNER: '..item.title..' - FREE!')
+end
 remote.OnServerEvent:Connect(function(p,op,itemKey)
     local s=sessions[p];if not s or type(op)~='string' then return end
     local now=os.clock();if now-(rate[p] or 0)<.25 then return end;rate[p]=now
@@ -122,6 +184,7 @@ remote.OnServerEvent:Connect(function(p,op,itemKey)
     if op~='Buy' then return end
     local item=Catalog.get(itemKey);if not item then return publicState(p,'Unknown item.') end
     if item.kind=='Pass' and s.passes[item.key] then return publicState(p,'You already own '..item.title..'.') end
+    if s.owner then return ownerGrant(p,item) end
     if not Catalog.configured(item) then
         if STUDIO then return studioGrant(p,item) end
         return publicState(p,item.title..' is coming soon!')

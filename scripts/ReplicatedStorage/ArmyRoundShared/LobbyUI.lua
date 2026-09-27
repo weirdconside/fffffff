@@ -24,6 +24,7 @@ end
 function Lobby.new(parent,uid,command)
     local self=setmetatable({uid=tostring(uid),command=command,selected=1,room=nil,state=nil},Lobby)
     local gui=make('ScreenGui',parent,'LobbyRoomPicker',{Enabled=true,ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=45,ZIndexBehavior=Enum.ZIndexBehavior.Sibling});self.gui=gui
+    Theme.safe(gui)
     -- host room picker -----------------------------------------------------------
     local card=make('Frame',gui,'Card',{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.55),Size=UDim2.fromOffset(380,262),Visible=false,Active=true})
     Theme.skin(card,C.Panel);self.card=card;self.scale=make('UIScale',card)
@@ -70,7 +71,10 @@ function Lobby.new(parent,uid,command)
         local c=Workspace.CurrentCamera;if not c then return end
         local v=c.ViewportSize
         if card.Visible then self.scale.Scale=math.max(.4,math.min(1,(v.X-28)/380,(v.Y-60)/262)) end
-        if bar.Visible then self.barScale.Scale=math.max(.5,math.min(1,(v.X-20)/BAR_W)) end
+        if bar.Visible then
+            self.barScale.Scale=math.max(.5,math.min(1,(v.X-20)/BAR_W,v.Y/560))
+            bar.Position=UDim2.new(.5,0,0,v.Y<420 and 52 or 68)
+        end
     end)
     self:refresh();return self
 end

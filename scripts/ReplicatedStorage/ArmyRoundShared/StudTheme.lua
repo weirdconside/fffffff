@@ -124,7 +124,7 @@ function Theme.billboard(root)
     end
 end
 function Theme.buildHUD(hud,data,icons)
-    hud:ClearAllChildren();hud.ResetOnSpawn=false;hud.IgnoreGuiInset=true;hud.DisplayOrder=10;hud.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+    hud:ClearAllChildren();hud.ResetOnSpawn=false;hud.IgnoreGuiInset=true;hud.DisplayOrder=10;hud.ZIndexBehavior=Enum.ZIndexBehavior.Sibling;Theme.safe(hud)
     local left=make('Frame',hud,'Left');left.Position=UDim2.fromOffset(16,112);left.Size=UDim2.fromOffset(222,462);Theme.skin(left,C.Panel)
     local heading=make('TextLabel',left,'Heading');heading.BackgroundTransparency=1;heading.Position=UDim2.fromOffset(12,7);heading.Size=UDim2.new(1,-24,0,24);heading.Text='RESOURCES';heading.TextXAlignment=Enum.TextXAlignment.Left;heading.ZIndex=4;Theme.headline(heading,19,C.Gold)
     local rows=make('ScrollingFrame',left,'Currencies');rows.Position=UDim2.fromOffset(8,38);rows.Size=UDim2.new(1,-16,1,-46);rows.BackgroundTransparency=1;rows.BorderSizePixel=0;rows.ScrollBarThickness=4;rows.ScrollingDirection=Enum.ScrollingDirection.Y;rows.CanvasSize=UDim2.fromOffset(0,#data.ResourceOrder*52);rows.AutomaticCanvasSize=Enum.AutomaticSize.None;rows.ZIndex=3
@@ -141,9 +141,65 @@ function Theme.buildHUD(hud,data,icons)
     end
     return rows
 end
+-- Keep a HUD inside the device safe area (notches, rounded corners) while
+-- still drawing under the Roblox top bar like the rest of the game UI.
+function Theme.safe(gui)
+    pcall(function() gui.ScreenInsets=Enum.ScreenInsets.DeviceSafeInsets end)
+    return gui
+end
+-- Resource panel: bottom-left (the chat lives top-left). Big screens get the
+-- full list; small screens a compact two-column grid of icon + number.
+local layouts=setmetatable({},{__mode='k'})
 function Theme.layoutHUD(hud,viewport)
     local w=viewport.X;local h=viewport.Y
-    hud.Left.Position=UDim2.fromOffset(12,68)
-    hud.Left.Size=UDim2.fromOffset(w<700 and 190 or 222,math.max(132,math.min(462,h-110)))
+    local left=hud:FindFirstChild('Left');if not left then return end
+    local rows=left:FindFirstChild('Currencies');if not rows then return end
+    local keep=layouts[rows]
+    if not keep then
+        keep={list=rows:FindFirstChildOfClass('UIListLayout')}
+        local grid=Instance.new('UIGridLayout');grid.Name='CompactGrid';grid.SortOrder=Enum.SortOrder.LayoutOrder
+        grid.CellPadding=UDim2.fromOffset(4,4);keep.grid=grid
+        layouts[rows]=keep
+    end
+    local count=0
+    for _,r in ipairs(rows:GetChildren()) do if r:IsA('Frame') then count+=1 end end
+    local compact=h<600 or w<900
+    if compact==keep.compact and keep.w==w and keep.h==h then return end
+    keep.compact=compact;keep.w=w;keep.h=h
+    left.AnchorPoint=Vector2.new(0,1)
+    local heading=left:FindFirstChild('Heading')
+    if compact then
+        if keep.list then keep.list.Parent=nil end
+        keep.grid.Parent=rows
+        local width=w<700 and 176 or 200
+        local cellH=30
+        keep.grid.CellSize=UDim2.new(.5,-2,0,cellH)
+        local lines=math.ceil(count/2)
+        local height=math.min(30+lines*(cellH+4)+10,math.max(120,h-150))
+        left.Size=UDim2.fromOffset(width,height);left.Position=UDim2.new(0,10,1,-10)
+        rows.Position=UDim2.fromOffset(6,30);rows.Size=UDim2.new(1,-12,1,-36);rows.CanvasSize=UDim2.fromOffset(0,lines*(cellH+4))
+        if heading then heading.Position=UDim2.fromOffset(10,5);heading.Size=UDim2.new(1,-20,0,20);heading.TextSize=15 end
+        for _,r in ipairs(rows:GetChildren()) do
+            if r:IsA('Frame') then
+                local name=r:FindFirstChild('ResourceName');if name then name.Visible=false end
+                local amount=r:FindFirstChild('Display');if amount then amount.Position=UDim2.fromOffset(32,0);amount.Size=UDim2.new(1,-34,1,0);amount.TextSize=17;amount.TextYAlignment=Enum.TextYAlignment.Center end
+                local icon=r:FindFirstChild('RoundResourceIcon');if icon then icon.Size=UDim2.fromOffset(24,24);icon.Position=UDim2.new(0,4,.5,0) end
+            end
+        end
+    else
+        keep.grid.Parent=nil
+        if keep.list then keep.list.Parent=rows end
+        local height=math.max(160,math.min(462,math.floor(h*.55)))
+        left.Size=UDim2.fromOffset(222,height);left.Position=UDim2.new(0,12,1,-12)
+        rows.Position=UDim2.fromOffset(8,38);rows.Size=UDim2.new(1,-16,1,-46);rows.CanvasSize=UDim2.fromOffset(0,count*52)
+        if heading then heading.Position=UDim2.fromOffset(12,7);heading.Size=UDim2.new(1,-24,0,24);heading.TextSize=19 end
+        for _,r in ipairs(rows:GetChildren()) do
+            if r:IsA('Frame') then
+                local name=r:FindFirstChild('ResourceName');if name then name.Visible=true end
+                local amount=r:FindFirstChild('Display');if amount then amount.Position=UDim2.fromOffset(54,20);amount.Size=UDim2.new(1,-60,0,25);amount.TextSize=22;amount.TextYAlignment=Enum.TextYAlignment.Center end
+                local icon=r:FindFirstChild('RoundResourceIcon');if icon then icon.Size=UDim2.fromOffset(42,42);icon.Position=UDim2.new(0,5,.5,0) end
+            end
+        end
+    end
 end
 return Theme

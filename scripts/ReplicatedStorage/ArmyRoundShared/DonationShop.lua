@@ -77,8 +77,10 @@ function Shop.new(parent,remote,catalog)
     local self=setmetatable({parent=parent,remote=remote,catalog=catalog,open=false,passes={},tokens={},studio=RunService:IsStudio(),
         prices={},cards={},glyphs={},spinners={},glows={},sparkles={},connections={},available=true,hiddenByIntro=false},Shop)
     local gui=make('ScreenGui',parent,'DonationShop',{ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=58,ZIndexBehavior=Enum.ZIndexBehavior.Sibling});self.gui=gui
+    Theme.safe(gui)
     -- ------------------------------------------------------------ shop button
-    local holder=make('Frame',gui,'ShopButton',{BackgroundTransparency=1,AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-14,.5,0),Size=UDim2.fromOffset(84,100),ZIndex=5})
+    local holder=make('Frame',gui,'ShopButton',{BackgroundTransparency=1,AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-10,.4,0),Size=UDim2.fromOffset(84,100),ZIndex=5})
+    local buttonFit=make('UIScale',holder,'Fit')
     local button=make('TextButton',holder,'Open',{Text='',AutoButtonColor=false,AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,0,4),Size=UDim2.fromOffset(72,72),ZIndex=6,Rotation=-4})
     Theme.skin(button,ROYAL);button:SetAttribute('UISound','open')
     local shine=make('Frame',button,'Shine',{BackgroundColor3=Color3.new(1,1,1),Size=UDim2.fromScale(1,1),ZIndex=12,BorderSizePixel=0});round(shine,UDim.new(0,5))
@@ -182,9 +184,15 @@ function Shop.new(parent,remote,catalog)
     self.connections[#self.connections+1]=shade.Activated:Connect(function() setOpen(false) end)
     self.connections[#self.connections+1]=button.MouseEnter:Connect(function() TweenService:Create(button,TweenInfo.new(.15),{Size=UDim2.fromOffset(78,78)}):Play() end)
     self.connections[#self.connections+1]=button.MouseLeave:Connect(function() TweenService:Create(button,TweenInfo.new(.15),{Size=UDim2.fromOffset(72,72)}):Play() end)
-    local clock,fitClock=0,0
+    local clock,fitClock,buttonClock=0,0,1
     self.connections[#self.connections+1]=RunService.RenderStepped:Connect(function(dt)
         clock+=dt
+        buttonClock+=dt
+        if buttonClock>=.5 then
+            buttonClock=0
+            local camera=Workspace.CurrentCamera
+            if camera then buttonFit.Scale=math.clamp(camera.ViewportSize.Y/640,.62,1) end
+        end
         if holder.Visible then
             button.Rotation=-4+math.sin(clock*1.6)*3
             button.Position=UDim2.new(.5,0,0,4+math.sin(clock*2.1)*2)
@@ -232,6 +240,7 @@ function Shop:refresh()
         card.owned=item.kind=='Pass' and self.passes[key]==true
         if card.glow then card.glow.Transparency=card.owned and .2 or 1 end
         if card.owned then b.Text='OWNED';b.BackgroundColor3=C.Dark;b.TextColor3=C.Gold
+        elseif self.owner then b.Text='FREE';b.BackgroundColor3=C.Green;b.TextColor3=C.White
         elseif not self.catalog.configured(item) then
             b.Text=self.studio and ('TEST R$ '..item.price) or 'SOON';b.BackgroundColor3=self.studio and C.Blue or C.Dark;b.TextColor3=C.White
         else b.Text='R$ '..tostring(self.prices[key] or item.price);b.BackgroundColor3=C.Green;b.TextColor3=C.White end
@@ -239,7 +248,7 @@ function Shop:refresh()
 end
 function Shop:buy(item)
     if item.kind=='Pass' and self.passes[item.key] then self.status.Text='You already own '..item.title..'.';return end
-    self.status.Text='Opening the Roblox purchase window...'
+    self.status.Text=self.owner and 'OWNER: it is free for you!' or 'Opening the Roblox purchase window...'
     self.remote:FireServer('Buy',item.key)
 end
 function Shop:applyState(payload)
@@ -247,9 +256,10 @@ function Shop:applyState(payload)
     self.passes=type(payload.passes)=='table' and payload.passes or {}
     self.tokens=type(payload.tokens)=='table' and payload.tokens or {}
     if payload.studio~=nil then self.studio=payload.studio==true end
+    self.owner=payload.owner==true
     if payload.message then
         local m=payload.message
-        if m:find('granted') or m:find('Thank you') or m:find('Unlocked') then UISound.play('success') end
+        if m:find('granted') or m:find('Thank you') or m:find('Unlocked') or m:find('FREE') then UISound.play('success') end
         self.status.Text=m;self.status.TextColor3=C.Gold
         TweenService:Create(self.status,TweenInfo.new(1.2),{TextColor3=C.White}):Play()
     end

@@ -32,7 +32,7 @@ function mps:PromptProductPurchase(p,id) prompted[#prompted+1]=id end
 function mps:UserOwnsGamePassAsync() return false end
 local donation=Instance.new("RemoteEvent");donation.Name="DonationShopRemote";donation.Parent=shared
 local dmsgs={}
-function donation:FireClient(p,kind,payload) dmsgs[#dmsgs+1]={kind,payload} end
+function donation:FireClient(p,kind,payload) dmsgs[#dmsgs+1]={kind,payload,p} end
 function donation:FireAllClients(kind,payload) dmsgs[#dmsgs+1]={kind,payload} end
 game.BindToClose=function() end
 local ok,e=pcall(__scripts.RoundServer);if not ok then report("RoundServer: "..tostring(e)) end
@@ -76,4 +76,19 @@ beats(10)
 cmd.OnServerEvent:Fire(localPlayer,nil,"LobbyConfig",{room=1,capacity=1})
 beats(160)
 print("phase after failed launch:",localPlayer:GetAttribute("ScenePhase"),"pos",hrp.Position)
+-- owners: OWNER plate, every pass, free tickets
+local owner=Instance.new("Player");owner.Name="ZOY0M";owner.UserId=7;owner.DisplayName="Owner"
+local oc=Instance.new("Model");oc.Name="OwnerCharacter";local head=Instance.new("Part");head.Name="Head";head.Parent=oc
+local oh=Instance.new("Humanoid");oh.Parent=oc;owner.Character=oc;owner.Parent=playersService
+playersService.PlayerAdded:Fire(owner);beats(10)
+local ostate;for _,m in ipairs(dmsgs) do if m[1]=="State" and m[3]==owner then ostate=m[2] end end
+assert(ostate and ostate.owner==true and ostate.passes.VIP and ostate.passes.Admin,"owner state")
+local before=ostate.tokens.Ticket or 0
+donation.OnServerEvent:Fire(owner,"Buy","Ticket20");clockValue=clockValue+1
+for _,m in ipairs(dmsgs) do if m[1]=="State" and m[3]==owner then ostate=m[2] end end
+assert(ostate.tokens.Ticket==before+20 and ostate.message:find("FREE"),"owner free tickets: "..tostring(ostate.message))
+local plate=oc:FindFirstChild("ShopCosmetic") and oc.ShopCosmetic:FindFirstChild("RankTag")
+assert(plate and plate:GetAttribute("OwnerTag") and plate.Face.Text=="OWNER","owner plate")
+assert(owner:GetAttribute("Perk_Owner")==true,"owner attribute")
+print("owner:",ostate.message,"tickets",ostate.tokens.Ticket)
 print("ERRORS:",#ERRORS)

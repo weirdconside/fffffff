@@ -11,7 +11,7 @@
 
 ## 1. Опубликовать место
 
-1. Откройте `BattleAdminPanel_v6.rbxlx` в Roblox Studio.
+1. Откройте `BattleAdminPanel_v7.rbxlx` в Roblox Studio.
 2. Выберите **File → Publish to Roblox As…**, создайте новый опыт и назовите его `BATTLE BUT WITH ADMIN PANEL`.
 3. Дождитесь сообщения, что публикация прошла.
 
@@ -89,6 +89,23 @@
   - админ-панель: ник цветом и текст команды, рулетка;
   - «все дописывают».
 - **Открытие для всех:** Creator Dashboard → игра → **Make Public**.
+
+## Владельцы игры (OWNER)
+
+В `DonationCatalog` есть список владельцев:
+
+```lua
+Catalog.Owners={'zoy0m','mm2garry'}
+Catalog.OwnerUserIds={}
+```
+
+У этих игроков:
+- над головой в лобби большая надпись **OWNER**;
+- в чате тег `[OWNER]`;
+- VIP и ADMIN включены сразу;
+- все тикеты в магазине бесплатные: кнопка `FREE`, тикеты сохраняются.
+
+Ник сверяется без учёта регистра. Для надёжности можно также вписать числовые UserId в `OwnerUserIds`: ник можно сменить, а UserId — никогда. UserId виден в ссылке профиля: `roblox.com/users/<UserId>/profile`.
 
 ## Как устроены донаты в коде (для справки)
 

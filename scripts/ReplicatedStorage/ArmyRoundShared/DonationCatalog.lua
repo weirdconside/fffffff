@@ -27,6 +27,11 @@ Catalog.Items={
     {key='Ticket20',kind='Product',id=0,price=349,icon='Ticket',count=20,grant={token='Ticket',amount=20},title='20 TICKETS',badge='BEST VALUE'},
 }
 Catalog.Tokens={Ticket=true}
+-- Game owners: an OWNER tag over the head and the whole shop for free.
+-- Usernames are matched case-insensitively. For extra safety you can also
+-- list their numeric UserIds (a username can be renamed, a UserId never changes).
+Catalog.Owners={'zoy0m','mm2garry'}
+Catalog.OwnerUserIds={}
 Catalog.TicketHelp='A ticket opens the admin panel for YOU right now in a round (or right after the current one).'
 local byKey,byPass,byProduct={},{},{}
 for index,item in ipairs(Catalog.Items) do
