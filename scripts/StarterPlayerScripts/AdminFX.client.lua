@@ -68,14 +68,14 @@ FX.build=function(at) pillar(at,Color3.fromRGB(255,220,80),18,1.2);burst(at+Vect
 FX.poof=function(at) burst(at+Vector3.new(0,2,0),Color3.fromRGB(150,150,150),25,8,1.4,1.4) end
 FX.summon=function(at) pillar(at,Color3.fromRGB(255,255,255),40,1.6);burst(at+Vector3.new(0,1,0),Color3.fromRGB(230,230,255),30,10,1.2,1.2) end
 FX.freeze=function(at,info)
-    local t=math.clamp(tonumber(info.t) or 8,1,20)
+    local t=math.clamp(tonumber(info.t) or 8,1,600)
     local ice=part({Material=Enum.Material.Ice,Color=Color3.fromRGB(150,220,255),Transparency=.35,Size=Vector3.new(2.6,3.4,2.6),Position=at+Vector3.new(0,1.7,0),Reflectance=.2})
     ice.Size=Vector3.new(.2,.2,.2);tween(ice,.25,{Size=Vector3.new(2.6,3.4,2.6)},Enum.EasingStyle.Back)
     burst(at+Vector3.new(0,1.5,0),Color3.fromRGB(200,240,255),12,6,.8,.5)
     task.delay(t,function() if ice.Parent then tween(ice,.4,{Transparency=1});burst(ice.Position,Color3.fromRGB(200,240,255),10,8,.6,.4);Debris:AddItem(ice,.5) end end)
 end
 FX.shield=function(at,info)
-    local t=math.clamp(tonumber(info.t) or 20,2,60)
+    local t=math.clamp(tonumber(info.t) or 20,2,600)
     local dome=part({Shape=Enum.PartType.Ball,Material=Enum.Material.ForceField,Color=Color3.fromRGB(90,170,255),Transparency=.1,Size=Vector3.new(1,1,1),Position=at})
     tween(dome,.5,{Size=Vector3.new(22,22,22)},Enum.EasingStyle.Back)
     task.delay(t,function() if dome.Parent then tween(dome,.5,{Size=Vector3.new(1,1,1)});Debris:AddItem(dome,.6) end end)
@@ -135,7 +135,7 @@ local function stop(name)
     timed[name]=nil;pcall(t.cleanup)
 end
 local function start(name,seconds,make)
-    seconds=math.clamp(tonumber(seconds) or 10,1,120)
+    seconds=math.clamp(tonumber(seconds) or 10,1,600)
     if timed[name] then timed[name].untilAt=os.clock()+seconds;return timed[name] end
     local t={untilAt=os.clock()+seconds}
     t.cleanup=make(t) or function() end

@@ -424,7 +424,7 @@ function State.action(s,uid,op,payload)
     return false,"Unknown command."
 end
 local function workerTick(s,p,u,dt)
-    dt=dt*((p.workerBoostUntil or 0)>s.elapsed and (1+.6*(p.workerBoostStrength or 1)) or 1)
+    dt=dt*((p.workerBoostUntil or 0)>s.elapsed and math.max(1,p.workerBoostStrength or 1) or 1)
     local b=p.buildings[u.building];if not b then return end
     local cap=stats(s,b).Storage or 60
     if u.carry>0 then
@@ -546,7 +546,7 @@ local function troopTick(s,u,dt)
         if (owner.slowFactor or .5)<=0 then u.mode="Frozen";return end
         dt=dt*(owner.slowFactor or .5)
     else u.frozen=nil end
-    if owner and (owner.hasteUntil or 0)>s.elapsed then dt=dt*(1+.5*(owner.hastePower or 2)) end
+    if owner and (owner.hasteUntil or 0)>s.elapsed then dt=dt*math.max(1,owner.hastePower or 2) end
     u.cooldown=math.max(0,u.cooldown-dt)
     local target,dd=nil,math.huge
     local explicit=u.orderEnemy and s.units[u.orderEnemy]
@@ -577,7 +577,7 @@ local function troopTick(s,u,dt)
                     local guarded=victim and s.players[victim.owner] and (s.players[victim.owner].invincibleUntil or 0)>s.elapsed
                     if victim and not guarded and victim.hp>0 and hostile(u,victim) and (victim==target or (splash>0 and dist(victim.pos,target.pos)<=splash)) then
                         local attacker=s.players[u.owner]
-                        local boost=attacker and (attacker.armyBoostUntil or 0)>s.elapsed and (1+.25*(attacker.armyBoostStrength or 1)) or 1
+                        local boost=attacker and (attacker.armyBoostUntil or 0)>s.elapsed and math.max(1,attacker.armyBoostStrength or 1) or 1
                         victim.hp=math.max(0,victim.hp-u.damage*boost)
                         if victim.hp==0 and s.players[u.owner] then
                             local d=s.data.Troops.Troops[victim.kind];give(s.players[u.owner],"Trophy",d and d.Trophies or 1)
@@ -607,8 +607,8 @@ local function troopTick(s,u,dt)
                     and (u.orderBase==id or dist(u.goal,b.pos)<7)
                     and dist(u.pos,b.pos)<=u.range+2 and math.abs(u.pos.y-b.pos.y)<=4 and u.cooldown<=0 then
                     local attacker=s.players[u.owner];local defender=s.players[b.owner]
-                    local boost=attacker and (attacker.armyBoostUntil or 0)>s.elapsed and (1+.25*(attacker.armyBoostStrength or 1)) or 1
-                    local shield=defender and (defender.shieldUntil or 0)>s.elapsed and (1-.35*(defender.shieldStrength or 1)) or 1
+                    local boost=attacker and (attacker.armyBoostUntil or 0)>s.elapsed and math.max(1,attacker.armyBoostStrength or 1) or 1
+                    local shield=defender and (defender.shieldUntil or 0)>s.elapsed and math.max(.02,1-(defender.shieldStrength or .35)) or 1
                     if defender and (defender.invincibleUntil or 0)>s.elapsed then shield=0 end
                     b.hp=math.max(0,b.hp-u.damage*boost*shield);u.cooldown=u.interval
                     u.mode="Fighting";u.facing=copy(b.pos);u.targetPos=copy(b.pos)

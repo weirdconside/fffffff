@@ -63,6 +63,10 @@
 Ресурсы | give | дай мне 1000 золота и 500 дерева | give me 1000 gold and 500 wood
 Ресурсы | give | хочу больше золота | i want more gold
 Ресурсы | give | начисли мне 10000 монет | add 10000 coins to me
+Ресурсы | give | дай мне безлимит всех ресурсов | give me unlimited resources
+Ресурсы | give | дай мне бесконечное золото | give me infinite gold
+Ресурсы | give | дай мне миллион дерева | give me a million wood
+Ресурсы | give | дай мне максимум золота | give me max gold
 Отнять ресурсы | take | забери у Bob всё золото | take all of Bob's gold
 Отнять ресурсы | take | обнули золото врагов | reset the enemies' gold
 Отнять ресурсы | take | отними у врагов дерево | take wood from the enemies
@@ -108,6 +112,8 @@
 Земли и острова | expand | открой новые земли | unlock new lands
 Земли и острова | expand | открой 3 земли | unlock 3 lands
 Земли и острова | expand | расширь мою территорию | expand my territory
+Земли и острова | expand | открой мне все участки базы | unlock all my lands
+Земли и острова | expand | открой все локации | open all locations
 Земли и острова | bridge | построй мост | build the bridge
 Земли и острова | capture_island | захвати остров | capture an island
 Земли и острова | capture_island | захвати все острова | capture all islands

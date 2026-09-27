@@ -11,8 +11,10 @@ Actions.Buildings={'Townhall','Barracks','Campsite','LumberHut','MinerHut','Gold
 Actions.ScreenEffects={'blind','shake','flip','blur','rainbow'}
 Actions.Weather={'night','day','rain','snow','fog','disco'}
 Actions.MaxTroops=200          -- the only hard limit: troops a single player can own through the admin panel
-Actions.MaxSeconds=120
-local GIVE_DEFAULT={Log=300,Stone=200,Gold=60,Plank=60,['Iron Ore']=60,['Iron Bar']=20,Crystal=20,Trophy=15}
+Actions.MaxSeconds=600          -- timed effects last at most 10 minutes (and never past the round)
+-- amounts when no number was given (the admin panel is meant to feel huge)
+local GIVE_DEFAULT={Log=30000,Stone=20000,Gold=6000,Plank=6000,['Iron Ore']=6000,['Iron Bar']=2000,Crystal=2000,Trophy=1500}
+Actions.Unlimited=999999
 local HARMFUL={damage_troops=true,kill_troops=true,damage_base=true,take=true,steal=true,freeze=true,slow=true,level_down=true,
     convert_troops=true,disable_controls=true,screen=true}
 local GLOBAL={weather=true,announce=true}
@@ -88,7 +90,7 @@ local function resourceList(a)
     local r=RES[lower(a.resource)]
     if r then return {r} end
     local t=lower(a.resource)
-    if t=='all' or t=='everything' or t=='resources' then return {'Log','Stone','Gold','Plank','Iron Ore','Iron Bar','Crystal'} end
+    if t=='all' or t=='everything' or t=='resources' then return {'Log','Stone','Gold','Plank','Iron Ore','Iron Bar','Crystal','Trophy'} end
     return {'Log','Stone','Gold'}
 end
 local function secs(a,default) return num(a.seconds,1,Actions.MaxSeconds,default) end
@@ -96,7 +98,7 @@ local function secs(a,default) return num(a.seconds,1,Actions.MaxSeconds,default
 local H={}
 H.damage_troops=function(s,e,p,a)
     if invincible(s,p) then return 0 end
-    local pct=num(a.percent,1,100,60)/100
+    local pct=num(a.percent,1,100,100)/100
     local list=troops(s,p.id);local shown=0
     local kind=a.style=='lightning' and 'lightning' or 'meteor'
     for _,u in ipairs(list) do
@@ -107,7 +109,7 @@ H.damage_troops=function(s,e,p,a)
         -- nobody to hit: it lands on their town hall instead (never below 1 HP)
         local b=p.baseId and s.bases[p.baseId]
         if not b or b.owner~=p.id then return 0 end
-        b.hp=math.max(1,b.hp-b.maxHP*.2*pct);p.baseHP=b.hp
+        b.hp=math.max(1,b.hp-b.maxHP*.5*pct);p.baseHP=b.hp
         for i=1,3 do fx(s,kind,{x=b.pos.x+math.cos(i*2.1)*3,y=b.pos.y,z=b.pos.z+math.sin(i*2.1)*3}) end
     end
     return 1
@@ -121,7 +123,7 @@ H.heal_troops=function(s,e,p,a)
 end
 H.damage_base=function(s,e,p,a)
     local b=p.baseId and s.bases[p.baseId];if not b or b.owner~=p.id or invincible(s,p) then return 0 end
-    local pct=num(a.percent,1,100,50)/100
+    local pct=num(a.percent,1,100,99)/100
     if (p.shieldUntil or 0)>s.elapsed then pct=pct*.5 end
     -- the panel can hurt a base but never capture it: troops must finish the job
     b.hp=math.max(1,b.hp-b.maxHP*pct);p.baseHP=b.hp
@@ -136,7 +138,7 @@ end
 H.summon=function(s,e,p,a)
     local kind=UNIT[lower(a.unit)] or 'Barbarian'
     local count=hook(s,'troopCount') and hook(s,'troopCount')(s,p) or #troops(s,p.id)
-    local n=math.min(num(a.count,1,Actions.MaxTroops,10),Actions.MaxTroops-count)
+    local n=math.min(num(a.count,1,Actions.MaxTroops,50),Actions.MaxTroops-count)
     if n<=0 or not hook(s,'summon') then a.full=true;return 0 end
     local at=hook(s,'summon')(s,p,kind,n)
     fx(s,'summon',at or basePos(s,p),{n=n})
@@ -148,22 +150,23 @@ H.give=function(s,e,p,a)
     for _,r in ipairs(list) do
         local have=p.resources[r] or 0
         local amount
-        if tonumber(a.factor) and tonumber(a.factor)>1 then amount=math.max(1,math.floor(have*(math.min(tonumber(a.factor),100)-1)))
-        else amount=num(a.amount,1,999999,GIVE_DEFAULT[r]) end
-        p.resources[r]=math.min(999999,have+amount);p.discovered[r]=true
+        if a.unlimited then amount=Actions.Unlimited
+        elseif tonumber(a.factor) and tonumber(a.factor)>1 then amount=math.floor(math.max(have,GIVE_DEFAULT[r])*(math.min(tonumber(a.factor),1000)-1))
+        else amount=num(a.amount,1,999999,GIVE_DEFAULT[r]*math.clamp(tonumber(a.scale) or 1,.01,1000)) end
+        p.resources[r]=math.min(Actions.Unlimited,have+amount);p.discovered[r]=true
     end
     fx(s,'gold',basePos(s,p),{r=list[1]})
     return 1
 end
 H.take=function(s,e,p,a)
-    local pct=num(a.percent,1,100,50)/100
+    local pct=num(a.percent,1,100,100)/100
     for _,r in ipairs(resourceList(a)) do p.resources[r]=math.floor((p.resources[r] or 0)*(1-pct)) end
     fx(s,'poof',basePos(s,p));return 1
 end
 H.steal=function(s,e,p,a)
     local thief=s.players[a.to and findName(s,a.to) or e.recipient] or s.players[e.recipient]
     if not thief or thief==p or not eligible(s,thief.id) then return 0 end
-    local pct=num(a.percent,1,100,50)/100
+    local pct=num(a.percent,1,100,100)/100
     for _,r in ipairs(resourceList(a)) do
         local take=math.floor((p.resources[r] or 0)*pct)
         if take>0 then p.resources[r]=p.resources[r]-take;thief.resources[r]=math.min(999999,(thief.resources[r] or 0)+take);thief.discovered[r]=true end
@@ -182,44 +185,44 @@ H.swap_resources=function(s,e,p,a)
 end
 H.freeze=function(s,e,p,a)
     if invincible(s,p) then return 0 end
-    local t=secs(a,10);p.slowUntil=s.elapsed+t;p.slowFactor=0
+    local t=secs(a,30);p.slowUntil=s.elapsed+t;p.slowFactor=0
     for i,u in ipairs(troops(s,p.id)) do if i<=16 then fx(s,'freeze',u.pos,{t=t}) end end
     fx(s,'freeze',basePos(s,p),{t=math.min(t,4)});return 1
 end
 H.slow=function(s,e,p,a)
-    local t=secs(a,20);p.slowUntil=s.elapsed+t;p.slowFactor=.35
+    local t=secs(a,60);p.slowUntil=s.elapsed+t;p.slowFactor=.15
     for i,u in ipairs(troops(s,p.id)) do if i<=12 then fx(s,'slow',u.pos) end end
     return 1
 end
 H.haste=function(s,e,p,a)
-    p.hasteUntil=s.elapsed+secs(a,30);p.hastePower=num(a.power,1,5,2)
+    p.hasteUntil=s.elapsed+secs(a,120);p.hastePower=num(a.power,1,20,5)
     for i,u in ipairs(troops(s,p.id)) do if i<=12 then fx(s,'boost',u.pos) end end
     return 1
 end
 H.boost_army=function(s,e,p,a)
-    p.armyBoostUntil=s.elapsed+secs(a,30);p.armyBoostStrength=num(a.power,1,10,3)
+    p.armyBoostUntil=s.elapsed+secs(a,120);p.armyBoostStrength=num(a.power,1,100,10)
     for i,u in ipairs(troops(s,p.id)) do if i<=12 then fx(s,'rage',u.pos) end end
     fx(s,'rage',basePos(s,p));return 1
 end
 H.buff_troops=function(s,e,p,a)
-    local mult=1+num(a.percent,-90,900,100)/100;local n=0
+    local mult=1+num(a.percent,-99,9900,900)/100;local n=0
     for _,u in ipairs(troops(s,p.id)) do
-        local now=u.buff or 1;local target=math.clamp(now*mult,.1,10);local k=target/now
+        local now=u.buff or 1;local target=math.clamp(now*mult,.01,100);local k=target/now
         if k~=1 then u.maxHP=u.maxHP*k;u.hp=math.max(1,u.hp*k);u.damage=u.damage*k;u.buff=target end
         n=n+1;if n<=12 then fx(s,mult>=1 and 'rage' or 'slow',u.pos) end
     end
     return n>0 and 1 or 0
 end
 H.invincible=function(s,e,p,a)
-    local t=secs(a,20);p.invincibleUntil=s.elapsed+t
+    local t=secs(a,60);p.invincibleUntil=s.elapsed+t
     fx(s,'shield',basePos(s,p),{t=t});return 1
 end
 H.shield=function(s,e,p,a)
-    local t=secs(a,40);p.shieldUntil=s.elapsed+t;p.shieldStrength=num(a.power,1,3,2)/2+.5
+    local t=secs(a,120);p.shieldUntil=s.elapsed+t;p.shieldStrength=.9
     fx(s,'shield',basePos(s,p),{t=t});return 1
 end
 H.boost_workers=function(s,e,p,a)
-    p.workerBoostUntil=s.elapsed+secs(a,60);p.workerBoostStrength=num(a.power,1,10,3)
+    p.workerBoostUntil=s.elapsed+secs(a,180);p.workerBoostStrength=num(a.power,1,50,10)
     fx(s,'boost',basePos(s,p));return 1
 end
 H.instant_build=function(s,e,p,a)
@@ -245,7 +248,7 @@ local function buildingList(s,p,a,wantUp)
 end
 H.level_up=function(s,e,p,a)
     local list,comps=buildingList(s,p,a,true)
-    local levels=num(a.levels,1,10,1);local n=math.min(#list,num(a.count,1,50,50))
+    local levels=num(a.levels,1,10,10);local n=math.min(#list,num(a.count,1,50,50))
     if n==0 or not hook(s,'setLevel') then return 0 end
     for i=1,n do
         local b=list[i];local top=#comps[b.kind].Levels
@@ -255,20 +258,20 @@ H.level_up=function(s,e,p,a)
 end
 H.level_down=function(s,e,p,a)
     local list=buildingList(s,p,a,false)
-    local levels=num(a.levels,1,10,1);local n=math.min(#list,num(a.count,1,50,50))
+    local levels=num(a.levels,1,10,10);local n=math.min(#list,num(a.count,1,50,50))
     if n==0 or not hook(s,'setLevel') then return 0 end
     for i=1,n do local b=list[i];hook(s,'setLevel')(s,p,b,math.max(1,b.level-levels));fx(s,'poof',b.pos) end
     return 1
 end
 H.research_up=function(s,e,p,a)
     local kinds=UNIT[lower(a.unit)] and {UNIT[lower(a.unit)]} or Actions.UnitKinds
-    local levels=num(a.levels,1,10,1);local n=0
+    local levels=num(a.levels,1,10,10);local n=0
     for _,kind in ipairs(kinds) do if hook(s,'research') and hook(s,'research')(s,p,kind,levels) then n=n+1 end end
     if n==0 then return 0 end
     fx(s,'build',basePos(s,p));return 1
 end
 H.expand=function(s,e,p,a)
-    local n=hook(s,'expand') and hook(s,'expand')(s,p,num(a.count,1,40,3)) or 0
+    local n=hook(s,'expand') and hook(s,'expand')(s,p,num(a.count,1,40,40)) or 0
     if n==0 then return 0 end
     fx(s,'build',basePos(s,p));a.done=n;return 1
 end
@@ -277,7 +280,7 @@ H.bridge=function(s,e,p,a)
     hook(s,'bridge')(s,p);fx(s,'build',basePos(s,p));return 1
 end
 H.capture_island=function(s,e,p,a)
-    local n=hook(s,'captureIslands') and hook(s,'captureIslands')(s,p,num(a.count,1,20,1)) or 0
+    local n=hook(s,'captureIslands') and hook(s,'captureIslands')(s,p,num(a.count,1,20,20)) or 0
     return n>0 and 1 or 0
 end
 local function victimOf(s,e,p,a)
@@ -310,18 +313,18 @@ end
 H.convert_troops=function(s,e,p,a)
     local to=s.players[a.to and findName(s,a.to) or e.recipient] or s.players[e.recipient]
     if not to or to==p or not hook(s,'convert') then return 0 end
-    local n=hook(s,'convert')(s,p,to,num(a.percent,1,100,50)/100,Actions.MaxTroops)
+    local n=hook(s,'convert')(s,p,to,num(a.percent,1,100,100)/100,Actions.MaxTroops)
     return n>0 and 1 or 0
 end
 H.disable_controls=function(s,e,p,a)
     if p.isBot then return 0 end
-    local t=secs(a,15);p.controlsLockedUntil=s.elapsed+t
+    local t=secs(a,20);p.controlsLockedUntil=s.elapsed+t
     fx(s,'controls',nil,{uid=p.id,t=t});return 1
 end
 H.screen=function(s,e,p,a)
     if p.isBot then return 0 end
     local effect=SCREEN[lower(a.effect)] or 'shake'
-    fx(s,'screen',nil,{uid=p.id,e=effect,t=secs(a,10)});return 1
+    fx(s,'screen',nil,{uid=p.id,e=effect,t=secs(a,15)});return 1
 end
 
 local LABEL={
@@ -370,7 +373,8 @@ function Actions.normalize(raw)
             local clean={type=a.type}
             for _,k in ipairs({'target','unit','resource','building','victim','to','effect','style'}) do if type(a[k])=='string' then clean[k]=a[k]:sub(1,40) end end
             if type(a.text)=='string' then clean.text=text(a.text) end
-            for _,k in ipairs({'count','amount','percent','seconds','power','levels','factor'}) do if tonumber(a[k]) then clean[k]=tonumber(a[k]) end end
+            if a.unlimited==true then clean.unlimited=true end
+            for _,k in ipairs({'count','amount','percent','seconds','power','levels','factor','scale'}) do if tonumber(a[k]) then clean[k]=tonumber(a[k]) end end
             plan.actions[#plan.actions+1]=clean
         end
     end
@@ -397,7 +401,7 @@ function Actions.execute(s,e,raw)
     local labels,full={},false
     for _,a in ipairs(plan.actions) do
         if GLOBAL[a.type] then
-            if a.type=='weather' then fx(s,'weather',nil,{e=WEATHER[lower(a.effect)] or 'night',t=secs(a,40)});labels[#labels+1]=LABEL.weather(a)
+            if a.type=='weather' then fx(s,'weather',nil,{e=WEATHER[lower(a.effect)] or 'night',t=secs(a,90)});labels[#labels+1]=LABEL.weather(a)
             elseif a.type=='announce' and a.text and a.text~='' then fx(s,'announce',nil,{text=a.text,from=name(s,e.recipient)});labels[#labels+1]=LABEL.announce(a) end
         else
             local hit={}

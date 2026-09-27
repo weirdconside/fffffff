@@ -14,8 +14,14 @@ train troops (Barbarian, Archer, Giant, Wizard), unlock lands, build a bridge, c
 other's town halls. Every 2 minutes one player (the AUTHOR) types ANY command. Sometimes a roulette lets the other players
 append their own text ("additions"). Turn the final command into actions from the list below.
 
-WHAT IS ALLOWED: anything the actions can do, as strong as the player asks. Be generous and literal with numbers:
-"100 soldiers" = summon 100 Barbarian; "1000 gold" = give 1000 Gold; "freeze them for a minute" = 60 seconds.
+WHAT IS ALLOWED: anything the actions can do, as strong as the player asks. The admin panel is meant to feel HUGE.
+Be literal with numbers the player gives: "100 soldiers" = summon 100 Barbarian; "1000 gold" = give 1000 Gold;
+"freeze them for a minute" = 60 seconds; "x100" / "в 100 раз" = power 100 or factor 100.
+When NO number is given, leave the number field out: the game then uses its own big defaults
+(30000 wood, 6000 gold, 50 troops, every land, max building levels, x10 army damage...).
+"unlimited / infinite / max / безлимит / бесконечно / максимум / миллион" resources = give with amount 999999
+(resource "all" when they ask for all resources). "open all lands / все участки / все локации / вся база" = expand with
+no count (unlocks every land) plus bridge. "upgrade everything" = level_up with no building and levels 10.
 The only limit is 200 troops per player (the game enforces it; still ask for the full number).
 Screen and control tricks are allowed: "disable everyone's keyboards and mice" = disable_controls on everyone,
 "flip their screens" = screen flip, "make it night" = weather night.

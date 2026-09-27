@@ -52,7 +52,7 @@ local G={
     down={'downgrade','delevel','lower','demote','понизь','пониз','даунгрейд','ухудш','откат'},
     research={'research','study','tech','technology','исследов','изучи','изуч','технолог'},
     expand={'expand','expansion','unlock','open','расшир','разблок','откр'},
-    land={'land','lands','plot','plots','territory','territories','земл','участ','территор'},
+    land={'land','lands','plot','plots','territory','territories','location','locations','area','areas','земл','участ','учат','учаск','учасст','территор','локац','клетк'},
     bridge={'bridge','мост'},
     island={'island','islands','остров'},
     capture={'capture','conquer','take over','claim','захват','завоюй','завоев','займи','присвой'},
@@ -81,6 +81,7 @@ local G={
     sec={'sec','secs','second','seconds','сек','секунд'},
     min={'min','mins','minute','minutes','мин','минут'},
     max={'max','maximum','макс','максимум'},
+    unlimited={'unlimited','infinite','infinity','endless','limitless','million','millions','безлимит','бесконечн','бескон','неограничен','безгранич','миллион','дофига','дохрена','немерено','сколько угодно'},
     zero={'zero','reset','обнул','сбрось','сбрас'},
     buildingWord={'building','buildings','structure','structures','здани','строени','сооружен'},
     pct={'percent','процент'},
@@ -374,9 +375,14 @@ local function parsePart(ctx,p)
     end
     if g(p,'bridge') then add({type='bridge',target=T(false)});return acts end
     if g(p,'island') then add({type='capture_island',target=T(false),count=n.plain or (g(p,'allword') and 20) or nil});return acts end
-    if g(p,'land') or (g(p,'expand') and not building) then add({type='expand',target=T(false),count=n.plain});return acts end
+    if g(p,'land') or (g(p,'expand') and not building) then
+        -- "all lands" also lays the bridge; no number = every land that is left
+        add({type='expand',target=T(false),count=n.plain})
+        if g(p,'allword') or g(p,'unlimited') or g(p,'max') then add({type='bridge',target=T(false)}) end
+        return acts
+    end
     if g(p,'research') then local u=rowOf(p,UNITS);add({type='research_up',target=T(false),unit=u and u.kind or nil,levels=n.plain});return acts end
-    if g(p,'level') or (g(p,'down') and (building or g(p,'buildingWord'))) then
+    if (g(p,'level') and not (g(p,'give') and #rpairs>0)) or (g(p,'down') and (building or g(p,'buildingWord'))) then
         local levels=g(p,'max') and 10 or n.plain
         if g(p,'down') then add({type='level_down',target=T(true),building=building and building.kind or nil,levels=levels})
         else add({type='level_up',target=T(false),building=building and building.kind or nil,levels=levels}) end
@@ -407,7 +413,8 @@ local function parsePart(ctx,p)
     elseif #rpairs>0 and (giveWord or (#acts==0 and not harmfulWords)) then
         local factor=g(p,'double') and ((has(p,{'triple','tripled','утро','втрое','тройн'}) and 3) or 2) or n.mult
         for _,pair in ipairs(rpairs) do
-            add({type='give',target=T(false),resource=pair.r,amount=pair.amount or (#rpairs==1 and n.plain) or nil,factor=factor})
+            add({type='give',target=T(false),resource=pair.r,amount=pair.amount or (#rpairs==1 and n.plain) or nil,factor=factor,
+                unlimited=(g(p,'unlimited') or g(p,'max')) or nil})
         end
     end
     -- troops
@@ -441,9 +448,9 @@ local function applyModifiers(ctx,p,actions)
     for _,a in ipairs(actions) do
         if mult then
             for _,k in ipairs({'count','amount','percent'}) do if a[k] then a[k]=a[k]*mult end end
-            if not a.count and a.type=='summon' then a.count=10*mult end
-            if not a.amount and a.type=='give' then a.factor=nil;a.amountMult=mult end
-            if not a.percent and (a.type=='damage_troops' or a.type=='damage_base') then a.percent=math.min(100,60*mult) end
+            if not a.count and a.type=='summon' then a.count=50*mult end
+            if not a.amount and a.type=='give' then a.scale=(a.scale or 1)*mult end
+            if not a.percent and (a.type=='damage_troops' or a.type=='damage_base') then a.percent=math.min(100,100*mult) end
             a.power=mult>=1 and math.min(10,(a.power or 2)*mult) or 1
             changed=true
         end
@@ -534,7 +541,6 @@ function Commands.plan(s,e,strict)
         end
     end
     for _,a in ipairs(plan.actions) do
-        if a.amountMult then a.amount=math.floor((a.amount or 100)*a.amountMult);a.amountMult=nil end
     end
     return plan
 end
