@@ -52,9 +52,10 @@ add_script(shared, 'ModuleScript', 'ShopIcons', 'new/ShopIcons.lua')
 add_script(shared, 'ModuleScript', 'StudTransition', 'new/StudTransition.lua')
 add_script(shared, 'ModuleScript', 'UISound', 'new/UISound.lua')
 add_script(sss, 'ModuleScript', 'Perks', 'new/Perks.lua')
+add_script(sss, 'ModuleScript', 'AdminBrain', 'new/AdminBrain.lua')
 sps = child(sp, 'StarterPlayerScripts')
 add_script(sps, 'LocalScript', 'LobbyAmbience', 'new/LobbyAmbience.client.lua')
-add_script(sps, 'LocalScript', 'UISounds', 'new/UISounds.client.lua')
+add_script(sps, 'LocalScript', 'AdminFX', 'new/AdminFX.client.lua')
 rf = item('ReplicatedFirst', 'ReplicatedFirst', ())
 add_script(rf, 'ModuleScript', 'TitleLogo', 'new/TitleLogo.lua')   # shared with the round loading curtain
 add_script(rf, 'LocalScript', 'TitleScreen', 'new/TitleScreen.client.lua')
@@ -91,6 +92,12 @@ for n, t, v in [('ColorShift_Top', 'Color3', (140, 132, 108)), ('ColorShift_Bott
 # faster walking in the lobby (16 * 2.5); rounds freeze the character anyway
 starter = top['StarterPlayer']
 set_prop(starter, 'CharacterWalkSpeed', 'float', 40)
+# Gemini admin panel needs outgoing HTTP (Game Settings > Security > Allow HTTP Requests)
+http = top.get('HttpService')
+if http is None:
+    http = item('HttpService', 'HttpService', ())
+    root.insert(list(root).index(rs), http)
+set_prop(http, 'HttpEnabled', 'bool', True)
 # ------------------------------------------------------------------ validate references
 refs = {}
 for it in root.iter('Item'):

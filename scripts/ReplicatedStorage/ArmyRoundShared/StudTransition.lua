@@ -22,7 +22,7 @@ local BEAT=.46886
 local SMALL_FONT=Font.new('rbxasset://fonts/families/FredokaOne.json',Enum.FontWeight.Bold,Enum.FontStyle.Normal)
 function T.new(parent)
     local self=setmetatable({active=false,serial=0,shown=false,t=0},T)
-    local gui=Instance.new('ScreenGui');gui.Name='StudTransition';gui.ResetOnSpawn=false;gui.IgnoreGuiInset=true;gui.DisplayOrder=1900
+    local gui=Instance.new('ScreenGui');gui.Name='StudTransition';gui.ResetOnSpawn=false;gui.IgnoreGuiInset=true;gui.ScreenInsets=Enum.ScreenInsets.None;gui.ClipToDeviceSafeArea=false;gui.DisplayOrder=1900
     gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling;gui.Enabled=false;gui.Parent=parent;self.gui=gui
     local rig=Instance.new('Frame');rig.Name='Rig';rig.BackgroundTransparency=1;rig.AnchorPoint=Vector2.new(.5,.5);rig.Position=UDim2.fromScale(.5,.5);rig.Rotation=-28;rig.Parent=gui;self.rig=rig
     self.rows={}

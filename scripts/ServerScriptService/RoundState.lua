@@ -198,9 +198,8 @@ function State.new(data,layouts,central,territories,options)
     s.wish=WishRules.new(s.players,{rng=s.rng})
     -- Admin commands that create units go through the normal spawn path.
     s.wishHooks={summon=function(state,p,kind,n)
+        -- Admin summons ignore housing; WishRules caps how many troops a player can hold.
         local troop=state.data.Troops.Troops[kind];if not troop then return end
-        -- Summons may overfill housing a little, never without limit.
-        if State.housing(state,p)+troop.Units>State.capacity(state,p)+12 then return end
         local at,camp
         for _,key in ipairs(sorted(p.buildings)) do local b=p.buildings[key]
             if b.kind=="Barracks" and not at then at=b.pos end
@@ -214,6 +213,11 @@ function State.new(data,layouts,central,territories,options)
             if p.rally then goal=copy(p.rally.pos);u.mode="AttackMove";u.orderBase=p.rally.base;u.orderEnemy=p.rally.enemy end
             go(state,u,goal)
         end
+        return at
+    end,attack=function(state,p,victim)
+        local base=victim.baseId and state.bases[victim.baseId]
+        if not base or base.owner~=victim.id then return 0 end
+        return rally(state,p,base.pos,nil,base.id,nil)
     end}
     -- Every objective is registered once. Disconnects never reduce the target count.
     for _,uid in ipairs(sorted(s.players)) do
@@ -552,7 +556,12 @@ end
 local function troopTick(s,u,dt)
     -- Freeze command: every troop of a frozen player acts at half speed.
     local owner=s.players[u.owner]
-    if owner and (owner.slowUntil or 0)>s.elapsed then dt=dt*.5;u.frozen=true else u.frozen=nil end
+    if owner and (owner.slowUntil or 0)>s.elapsed then
+        -- freeze (factor 0) stops the troop completely, slow just halves its time
+        u.frozen=true
+        if (owner.slowFactor or .5)<=0 then u.mode="Frozen";return end
+        dt=dt*(owner.slowFactor or .5)
+    else u.frozen=nil end
     u.cooldown=math.max(0,u.cooldown-dt)
     local target,dd=nil,math.huge
     local explicit=u.orderEnemy and s.units[u.orderEnemy]

@@ -52,7 +52,7 @@ local DROP=2.98                    -- the active part starts here
 local BEAT=.46886                  -- 128 BPM, beat 0 = DROP
 local TRACK_LENGTH=32.55
 
-local gui=make("ScreenGui",playerGui,"TitleScreen",{ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=5000,ZIndexBehavior=Enum.ZIndexBehavior.Sibling})
+local gui=make("ScreenGui",playerGui,"TitleScreen",{ResetOnSpawn=false,IgnoreGuiInset=true,ScreenInsets=Enum.ScreenInsets.None,ClipToDeviceSafeArea=false,DisplayOrder=5000,ZIndexBehavior=Enum.ZIndexBehavior.Sibling})
 local paper=make("Frame",gui,"Paper",{Size=UDim2.fromScale(1,1),BackgroundColor3=PAPER,BorderSizePixel=0,ZIndex=1})
 make("UIGradient",paper,"Tint",{Rotation=90,Color=ColorSequence.new(Color3.fromRGB(255,255,255),Color3.fromRGB(255,236,214))})
 make("ImageLabel",paper,"Studs",{BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Image=STUD,ScaleType=Enum.ScaleType.Tile,TileSize=UDim2.fromOffset(56,56),ImageTransparency=.94,ZIndex=1})

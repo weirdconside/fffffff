@@ -12,11 +12,13 @@ local World=require(script.Parent.RoundWorld)
 local Bots=require(script.Parent.RoundBots)
 local Queue=require(script.Parent.LobbyQueue)
 local WishRules=require(script.Parent.WishRules)
+local Brain=require(script.Parent.AdminBrain)
 local Theme=require(Shared.StudTheme)
 local Perks=require(script.Parent.Perks)
 local Catalog=require(Shared.DonationCatalog)
 local Command=Shared.Command
 local Snapshot=Shared.Snapshot
+local AdminFX=Shared:FindFirstChild("AdminFX") or Instance.new("RemoteEvent");AdminFX.Name="AdminFX";AdminFX.Parent=Shared
 local lobby=assert(Workspace:FindFirstChild("LobbyWorld"),"LobbyWorld missing")
 local pads=assert(lobby:FindFirstChild("NativeTeleporters"),"Native squares missing")
 local lobbySpawn=assert(Workspace:FindFirstChild("LobbySpawn"),"LobbySpawn missing")
@@ -390,6 +392,28 @@ RunService.Heartbeat:Connect(function(dt)
                                 end
                             end)
                         end
+                    end
+                    -- the final admin command goes to Gemini; no answer -> local interpreter
+                    local think=WishRules.thinking(session.state)
+                    if think then
+                        task.spawn(function()
+                            local plan=Brain.ask(think)
+                            if plan and type(plan.caption)=="string" then
+                                local viewer=Players:GetPlayerByUserId(tonumber(think.authorUid) or 0)
+                                if not viewer or membership[viewer]~=session then viewer=next(session.players) end
+                                plan.caption=viewer and filterPublic(viewer,plan.caption) or nil
+                            end
+                            if sessions[room.id]==session and session.state then
+                                WishRules.resolve(session.state,think.eventId,plan)
+                                session.sequence=session.sequence+1
+                                for p in pairs(session.players) do send(session,p,nil) end
+                            end
+                        end)
+                    end
+                    local effects=session.state.fx
+                    if effects and #effects>0 then
+                        session.state.fx={}
+                        for p in pairs(session.players) do if p.Parent==Players then AdminFX:FireClient(p,effects) end end
                     end
                     local rendered,renderError=pcall(World.sync,session.world,session.state)
                     if not rendered and os.clock()-(session.lastRenderWarning or -100)>5 then

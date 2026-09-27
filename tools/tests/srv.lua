@@ -1,7 +1,7 @@
 local sss=newInstance("ServerScriptService","ServerScriptService");services.ServerScriptService=sss
 local ss=newInstance("ServerStorage","ServerStorage");services.ServerStorage=ss
 for _,n in ipairs({"StudTheme","RoundData","TypingRules","DonationCatalog"}) do local m=Instance.new("ModuleScript");m.Name=n;m.Parent=shared;__inst[n]=m end
-for _,n in ipairs({"RoundState","RoundBots","LobbyQueue","WishRules","Perks","RoundWorld","RoundServer","DonationServer"}) do local m=Instance.new("ModuleScript");m.Name=n;m.Parent=sss;__inst[n]=m end
+for _,n in ipairs({"RoundState","RoundBots","LobbyQueue","WishRules","Perks","AdminBrain","RoundWorld","RoundServer","DonationServer"}) do local m=Instance.new("ModuleScript");m.Name=n;m.Parent=sss;__inst[n]=m end
 local cmd=Instance.new("RemoteEvent");cmd.Name="Command";cmd.Parent=shared
 local snap=Instance.new("RemoteEvent");snap.Name="Snapshot";snap.Parent=shared
 local toClient={}

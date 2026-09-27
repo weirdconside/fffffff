@@ -199,6 +199,12 @@ function Admin:update(wish)
             self:setLines(quotes)
             effect=wish.effect
             if ok then UISound.play('success') end
+        elseif self.phase=='Thinking' then
+            kicker='THE ADMIN PANEL IS THINKING...'
+            local quotes={}
+            for _,q in ipairs(wish.quotes or {}) do quotes[#quotes+1]={name=q.name,color=colour(q.color),text=q.text} end
+            if #quotes==0 then quotes[1]={name=author.name,color=author.color,text=wish.finalPrompt or wish.prompt or ''} end
+            self:setLines(quotes)
         elseif self.phase=='Resolving' then
             kicker='THE ADMIN PANEL IS WORKING'
             self:setLines({{name=author.name,color=author.color,suffix=' ',text='used the admin panel...'}})
@@ -208,7 +214,7 @@ function Admin:update(wish)
         self.kicker.Text=kicker;self.kicker.TextColor3=kickerColour
         self.effect.Visible=effect~=nil and effect~='';self.effect.Text=effect or ''
     end
-    if self.hint.Visible then self.hint.Text='TRY: heal my army  /  meteor on enemies  /  summon 3 giants  /  give me gold' end
+    if self.hint.Visible then self.hint.Text='TYPE ANYTHING! e.g. meteor on everyone  /  summon 5 giants  /  freeze Bob' end
     self.manual:allow(typing)
     if changed and typing then
         UISound.play('open')
