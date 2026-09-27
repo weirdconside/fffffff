@@ -1,9 +1,9 @@
 import os
 base=os.path.dirname(os.path.abspath(__file__))+'/..'
-mods={'StudTheme':'src/StudTheme.lua','ShopIcons':'new/ShopIcons.lua','DonationShop':'new/DonationShop.lua','DonationCatalog':'new/DonationCatalog.lua',
+mods={'StudTheme':'new/StudTheme.lua','UISound':'new/UISound.lua','ShopIcons':'new/ShopIcons.lua','DonationShop':'new/DonationShop.lua','DonationCatalog':'new/DonationCatalog.lua',
       'LobbyUI':'new/LobbyUI.lua','AdminUI':'new/AdminUI.lua','ManualTyping':'src/ManualTyping.lua','TypingRules':'src/TypingRules.lua',
       'StudTransition':'new/StudTransition.lua'}
-scripts={'TitleScreen':'new/TitleScreen.client.lua','DonationClient':'new/DonationClient.client.lua','LobbyAmbience':'new/LobbyAmbience.client.lua'}
+scripts={'TitleScreen':'new/TitleScreen.client.lua','DonationClient':'new/DonationClient.client.lua','LobbyAmbience':'new/LobbyAmbience.client.lua','UISounds':'new/UISounds.client.lua'}
 out=[open(base+'/test/rbxmock.lua').read()]
 for name,path in mods.items():
     out.append(f'__modules["{name}"]=function()\n{open(base+"/"+path).read()}\nend\n')

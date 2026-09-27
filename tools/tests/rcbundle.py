@@ -1,6 +1,6 @@
 import os
 base=os.path.dirname(os.path.abspath(__file__))+'/..'
-mods={'StudTheme':'src/StudTheme.lua','ShopIcons':'new/ShopIcons.lua','LobbyUI':'new/LobbyUI.lua','AdminUI':'new/AdminUI.lua','ManualTyping':'src/ManualTyping.lua',
+mods={'StudTheme':'new/StudTheme.lua','UISound':'new/UISound.lua','ShopIcons':'new/ShopIcons.lua','LobbyUI':'new/LobbyUI.lua','AdminUI':'new/AdminUI.lua','ManualTyping':'src/ManualTyping.lua',
       'TypingRules':'src/TypingRules.lua','StudTransition':'new/StudTransition.lua','RoundData':'src/RoundData.lua','ResourceIcons':'src/ResourceIcons.lua',
       'RoundAnimations':'src/RoundAnimations.lua','BaseBadges':'src/BaseBadges.lua','WishRules':'new/WishRules.lua','RoundState':'new/RoundState.lua'}
 out=[open(base+'/test/rbxmock.lua').read()]

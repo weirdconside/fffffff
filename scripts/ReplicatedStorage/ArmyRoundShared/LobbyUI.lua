@@ -1,6 +1,7 @@
 -- Room UI: the first player on a square picks the room size, everybody on
 -- the square sees a small status bar with a LEAVE button.
 local Theme=require(script.Parent.StudTheme)
+local UISound=require(script.Parent.UISound)
 local Workspace=game:GetService('Workspace')
 local RunService=game:GetService('RunService')
 local TweenService=game:GetService('TweenService')
@@ -97,7 +98,7 @@ function Lobby:update(l,active,message)
     if l.capacity then self.pending=false;choosing=false end
     if message and message~='CHOOSE' and message~='JOIN' then self.pending=false end
     if choosing and not self.card.Visible then
-        self.card.Visible=true;self.scale.Scale=.8
+        self.card.Visible=true;self.scale.Scale=.8;UISound.play('open')
         TweenService:Create(self.scale,TweenInfo.new(.2,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
     elseif not choosing then self.card.Visible=false end
     self.bar.Visible=not choosing

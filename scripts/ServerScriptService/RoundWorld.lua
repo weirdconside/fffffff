@@ -234,6 +234,8 @@ local function showBuilding(w,uid,key,b)
             local resource=w.data.WorkerResources[b.kind] or (b.kind=="GoldMine" and "Gold")
             for _,o in ipairs(candidate:GetDescendants()) do
                 if o:IsA("BillboardGui") then
+                    -- storage counters must never disappear inside the building mesh
+                    o.AlwaysOnTop=true;o.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
                     if o.Name=="StorageDisplay" and resource then Icons.fixBillboard(o,resource) end
                 elseif o:IsA("TextLabel") and o.Name=="TextLabel" then nativeSigns[#nativeSigns+1]=o end
             end

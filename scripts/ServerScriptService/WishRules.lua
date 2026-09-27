@@ -4,8 +4,8 @@
 local Typing=require(game:GetService('ReplicatedStorage'):WaitForChild('ArmyRoundShared'):WaitForChild('TypingRules'))
 local Rules={Times={Prompt=15,Announcement=3,Roulette=5,Append=10,Applied=4,Filtering=6,Resolving=6}}
 -- Admin panel pacing: a visible timer opens the panel for someone at random.
-Rules.FirstDelay=45      -- seconds into the round before the first admin panel
-Rules.Interval=60        -- seconds between admin panels (counted after one finishes)
+Rules.FirstDelay=120     -- seconds into the round before the first admin panel (2 minutes)
+Rules.Interval=120       -- one timer admin panel every 2 minutes (start to start)
 Rules.AdminBonus=.20     -- ADMIN pass: +20% weight in the random pick
 local function copy(v) if type(v)~='table' then return v end;local out={};for k,x in pairs(v) do out[k]=copy(x) end;return out end
 local function keys(t) local a={};for k in pairs(t or {}) do a[#a+1]=tostring(k) end;table.sort(a);return a end
@@ -58,7 +58,7 @@ function Rules.newEvent(s)
     local w=s.wish
     if not w or w.event then return end
     local id=recipient(s);if not id then return end
-    w.firstDone=true
+    w.firstDone=true;w.lastTimerStart=s.elapsed
     return open(s,id,false)
 end
 -- Tickets: open the panel for the owner right now, or right after the
@@ -273,7 +273,8 @@ function Rules.tick(s,elapsed)
             if elapsed>=e.deadline then
                 w.event=nil
                 -- the timer restarts after a timer panel; tickets never delay it
-                if not e.ticket then w.nextAt=elapsed+Rules.Interval else w.nextAt=math.max(w.nextAt,elapsed+3) end
+                if not e.ticket then w.nextAt=math.max((w.lastTimerStart or elapsed)+Rules.Interval,elapsed+5)
+                else w.nextAt=math.max(w.nextAt,elapsed+3) end
             end
             return
         end

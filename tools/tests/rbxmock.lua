@@ -117,7 +117,8 @@ local DEFAULTS={Visible=true,Enabled=true,Size=UDim2.new(),Position=UDim2.new(),
     BackgroundTransparency=0,TextTransparency=0,ImageTransparency=0,TextSize=14,Text="",Transparency=0,Scale=1,
     AbsolutePosition=Vector2.new(100,100),AbsoluteSize=Vector2.new(200,100),Offset=Vector2.new(),Value=nil,
     CFrame=CFrame.new(),Anchored=true,CanCollide=true,TextColor3=Color3.new(1,1,1),BackgroundColor3=Color3.new(1,1,1),
-    CanvasPosition=Vector2.new(),ViewportSize=Vector2.new(1280,720),GroupTransparency=0}
+    CanvasPosition=Vector2.new(),ViewportSize=Vector2.new(1280,720),GroupTransparency=0,
+    IsPlaying=false,IsLoaded=false,TimePosition=0,TimeLength=0,Volume=.5,SoundId=''}
 local function newInstance(class,name)
     local o={__class=class,__props={Name=name or class,ClassName=class},__children={},__attrs={},__signals={},__attrSignals={},__propSignals={}}
     return setmetatable(o,instMt)

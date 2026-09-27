@@ -59,6 +59,10 @@ end)
 -- Title screen ----------------------------------------------------------------
 section("TitleScreen",function()
     __scripts.TitleScreen()
+    -- simulate the uploaded title track playing (and looping once)
+    local snd=game:GetService("SoundService"):FindFirstChild("TitleMusic");assert(snd and snd.SoundId:find("132472169476353"),"music id")
+    snd.IsPlaying=true;snd.IsLoaded=true;snd.TimeLength=32.5
+    local musicConn=runService.RenderStepped:Connect(function(dt) snd.TimePosition=(snd.TimePosition+dt)%snd.TimeLength end)
     frames(60)
     local gui=playerGui:FindFirstChild("TitleScreen");assert(gui,"title gui")
     frames(420)
@@ -73,4 +77,5 @@ section("LobbyAmbience",function()
     local lw=Instance.new("Model");lw.Name="LobbyWorld";lw.Parent=workspace
     __scripts.LobbyAmbience();frames(5)
 end)
+section("UISounds",function() __scripts.UISounds();frames(3);local b=Instance.new("TextButton");b.Parent=playerGui;b.Activated:Fire() end)
 print("ERRORS:",#ERRORS)

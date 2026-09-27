@@ -257,7 +257,7 @@ end
 -- Title music: the track from the reference video (TitleMusic.mp3). Upload it
 -- in Creator Dashboard -> Audio and paste the id here; with 0 the animation
 -- still runs on the same beat grid, just silently.
-local MUSIC_ID=0
+local MUSIC_ID=132472169476353
 local BPM,FIRST_BEAT=128.05,.39            -- measured from the track
 local BEAT=60/BPM
 local SoundService=game:GetService("SoundService")

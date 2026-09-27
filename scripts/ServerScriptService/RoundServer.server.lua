@@ -141,7 +141,7 @@ end
 local function leave(player,teleport)
     local session=membership[player];membership[player]=nil
     restore(player)
-    player:SetAttribute("ScenePhase","Lobby");player:SetAttribute("RoundToken",nil)
+    player:SetAttribute("ScenePhase","Lobby");player:SetAttribute("RoundToken",nil);player:SetAttribute("SceneCover",nil)
     player:SetAttribute("RoundHome",nil);player:SetAttribute("RoundCenter",nil);player:SetAttribute("RoundModel",nil)
     player:SetAttribute("RoundBoundsMin",nil);player:SetAttribute("RoundBoundsMax",nil)
     if session then
@@ -156,6 +156,26 @@ local function finish(session)
     for _,p in ipairs(list) do leave(p,true) end
     free(session)
 end
+-- The client needs ~1 s to close the brick curtain; players are only moved
+-- once the screen is covered, so nobody sees the world pop in or out.
+local COVER_SECONDS=1.1
+local function coveredLeave(session,player)
+    session.leaving=session.leaving or {}
+    if session.leaving[player] then return end
+    session.leaving[player]=true
+    player:SetAttribute("SceneCover",os.clock())
+    task.delay(COVER_SECONDS,function()
+        if membership[player]==session then leave(player,true) end
+    end)
+end
+local function coveredFinish(session)
+    if session.finishing then return end
+    session.finishing=true
+    for p in pairs(session.players) do if p.Parent==Players then p:SetAttribute("SceneCover",os.clock()) end end
+    task.delay(COVER_SECONDS,function()
+        if sessions[session.room.id]==session then finish(session) end
+    end)
+end
 local function send(session,player,message)
     if membership[player]~=session or not session.state then return end
     local snapshot=State.snapshot(session.state,tostring(player.UserId));if not snapshot then return end
@@ -164,8 +184,8 @@ local function send(session,player,message)
     if snapshot.winner then local winner=session.state.players[snapshot.winner];snapshot.winnerName=winner and winner.name or snapshot.winner end
     Snapshot:FireClient(player,snapshot)
 end
-local function launch(room,group)
-    if room.busy then return end
+local function launch(room,group,prebusy)
+    if room.busy and not prebusy then return end
     room.busy=true;room.deadline=nil;room.remaining=nil
     local token=HttpService:GenerateGUID(false):gsub("%-","")
     local session={room=room,token=token,players={},botIds={},sequence=0,defeatedAt={},wishSerial={}};sessions[room.id]=session
@@ -381,10 +401,10 @@ RunService.Heartbeat:Connect(function(dt)
                             end
                         end
                     end
-                    for _,player in ipairs(eliminated) do leave(player,true) end
+                    for _,player in ipairs(eliminated) do coveredLeave(session,player) end
                     if session.state.status=="Ended" then
                         if not session.endedAt then session.endedAt=os.clock() end
-                        if os.clock()-session.endedAt>=Data.ResultSeconds then finish(session) end
+                        if os.clock()-session.endedAt>=Data.ResultSeconds then coveredFinish(session) end
                     end
                 end)
                 if not ok then warn("[ArmyRound] Simulation stopped safely: "..tostring(err));finish(session) end
@@ -433,20 +453,26 @@ RunService.Heartbeat:Connect(function(dt)
                 sendLobby(room)
                 if group and #group>0 then
                     room.queued={};room.order={}
-                    -- A crash while launching must never leave a room stuck.
-                    local launched,crash=pcall(launch,room,group)
-                    if not launched then
-                        warn("[ArmyRound] Launch crashed safely: "..tostring(crash))
-                        local session=sessions[room.id]
-                        if session then pcall(finish,session) else room.busy=false;room.host=nil;room.capacity=nil;room.remaining=nil end
-                        for _,p in ipairs(group) do if p.Parent==Players and not membership[p] then p:SetAttribute("ScenePhase","Lobby") end end
-                        label(room,0,COUNTDOWN)
-                    end
+                    -- 1) close the curtain on every client, 2) build and move once it is shut
+                    room.busy=true;room.deadline=nil;room.remaining=nil
+                    for _,p in ipairs(group) do if p.Parent==Players then p:SetAttribute("ScenePhase","Transferring") end end
+                    label(room,#group,"...")
+                    task.delay(COVER_SECONDS,function()
+                        -- A crash while launching must never leave a room stuck.
+                        local launched,crash=pcall(launch,room,group,true)
+                        if not launched then
+                            warn("[ArmyRound] Launch crashed safely: "..tostring(crash))
+                            local session=sessions[room.id]
+                            if session then pcall(finish,session) else room.busy=false;room.host=nil;room.capacity=nil;room.remaining=nil end
+                            for _,p in ipairs(group) do if p.Parent==Players and not membership[p] then p:SetAttribute("ScenePhase","Lobby") end end
+                            label(room,0,COUNTDOWN)
+                        end
+                    end)
                 end
             else
                 for _,player in ipairs(list) do
                     local r=root(player)
-                    if not membership[player] and r and inPad(room,r) then
+                    if not membership[player] and r and inPad(room,r) and player:GetAttribute("ScenePhase")~="Transferring" then
                         local exit=room.model:FindFirstChild("LeaveHere",true)
                         move(player,exit and exit.CFrame+Vector3.new(0,2,0) or lobbySpawn.CFrame+Vector3.new(0,4,0))
                     end

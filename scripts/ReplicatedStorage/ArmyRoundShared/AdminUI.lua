@@ -4,6 +4,7 @@ local RunService=game:GetService('RunService')
 local Workspace=game:GetService('Workspace')
 local Theme=require(script.Parent.StudTheme)
 local Manual=require(script.Parent.ManualTyping)
+local UISound=require(script.Parent.UISound)
 local Admin={};Admin.__index=Admin
 local function make(class,parent,name)
     local o=Instance.new(class);o.Name=name or class;o.Parent=parent;return o
@@ -89,6 +90,7 @@ function Admin:update(wish)
     end
     self.manual:allow(self.field.Visible)
     if changed and self.field.Visible then
+        UISound.play('open')
         self.manual:set(self.phase=='Append' and ((wish.prompt or '')..' ') or '',wish.ownDraft or '')
         self.input.PlaceholderText=self.phase=='Append' and 'Add to the command and press Enter (e.g. "but at half strength")' or 'Type your admin command and press Enter'
         task.defer(function() if self.gui.Enabled and self.field.Visible then self.input:CaptureFocus();self.input.CursorPosition=#self.input.Text+1 end end)

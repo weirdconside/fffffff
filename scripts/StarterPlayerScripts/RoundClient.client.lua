@@ -22,6 +22,7 @@ if not hud then warn("[ArmyRound] Native HUD did not replicate");return end
 local currencies=Theme.buildHUD(hud,Data,Icons)
 -- Brick wipe between the lobby and a round (the title screen covers the first join).
 local Transition=require(shared:WaitForChild("StudTransition"))
+local UISound=require(shared:WaitForChild("UISound"))
 local transition=Transition.new(playerGui)
 local ROOM_NAMES={"ROOM 1","ROOM 2","ROOM 3"}
 local launchCover=false
@@ -46,6 +47,9 @@ local currentTarget=nil
 -- path because mobile devices do not emit MouseButton1/MouseMovement.
 local touchId,touchStart,touchLast,touchMoved,touchStartedAt,touchOverGui=nil,nil,nil,false,0,nil
 local touchPanThreshold=10
+-- Two-finger pinch zooms the round camera on phones and tablets.
+local touchCount,pinching,pinchHeight,pinchDistance=0,false,48,nil
+local fingers={}
 -- Forward declarations: the contextual panel is defined before input helpers.
 local send, costText, tell
 local lastKind="Barbarian"
@@ -81,7 +85,7 @@ local boostLayout=Instance.new("UIListLayout");boostLayout.FillDirection=Enum.Fi
 local timerChip=Instance.new("Frame");timerChip.Name="AdminTimer";timerChip.LayoutOrder=1;timerChip.Size=UDim2.fromOffset(220,40);timerChip.Parent=boostRow
 Theme.skin(timerChip,Theme.Colors.Purple)
 local timerText=Instance.new("TextLabel");timerText.Name="Caption";timerText.BackgroundTransparency=1;timerText.Size=UDim2.fromScale(1,1);timerText.ZIndex=5;timerText.Parent=timerChip
-Theme.text(timerText,15,Theme.Colors.White);timerText.Text="ADMIN PANEL IN 0:45"
+Theme.text(timerText,15,Theme.Colors.White);timerText.Text="ADMIN PANEL IN 2:00"
 local ticketButton=Instance.new("TextButton");ticketButton.Name="Ticket";ticketButton.LayoutOrder=2;ticketButton.Size=UDim2.fromOffset(190,40);ticketButton.Text="USE TICKET";ticketButton.Visible=false;ticketButton.Parent=boostRow
 Theme.button(ticketButton,Theme.Colors.Gold,15);ticketButton.TextColor3=Theme.Colors.Ink
 ticketButton.Activated:Connect(function() if active and token then command:FireServer(token,"UseTicket",{}) end end)
@@ -378,7 +382,10 @@ snapshots.OnClientEvent:Connect(function(incoming)
     if type(sequence)~="number" or sequence~=sequence then return end
     if not active or incoming.token~=token or sequence<lastSequence then return end
     lastSequence=sequence;state=incoming
-    if type(incoming.message)=="string" then tell(incoming.message) end
+    if type(incoming.message)=="string" then
+        tell(incoming.message)
+        if incoming.message:find("Ticket used") then UISound.play("success") end
+    end
     updateResources(incoming.resources)
     adminUI:update(incoming.wish)
     refreshBoosts(incoming)
@@ -427,6 +434,12 @@ end)
 -- the map sends the army there (the mobile equivalent of right click).  UI
 -- touches are left to GuiButton.Activated and never leak into the world.
 UIS.TouchStarted:Connect(function(input,processed)
+    fingers[input]=input.Position;touchCount=0;for _ in pairs(fingers) do touchCount+=1 end
+    if touchCount>=2 then
+        -- a second finger turns the gesture into a pinch: no pan, no tap
+        pinching=true;pinchHeight=height;pinchDistance=nil;touchMoved=true
+        return
+    end
     if not active or processed or blockedInput() or touchId then return end
     local p=input.Position
     touchId=input;touchStart=Vector2.new(p.X,p.Y);touchLast=touchStart
@@ -434,6 +447,18 @@ UIS.TouchStarted:Connect(function(input,processed)
     touchOverGui=overButton(p.X,p.Y)
 end)
 UIS.TouchMoved:Connect(function(input,processed)
+    if fingers[input] then fingers[input]=input.Position end
+    if pinching then
+        if not active then return end
+        local a,b
+        for _,pos in pairs(fingers) do if not a then a=pos elseif not b then b=pos end end
+        if a and b then
+            local d=(Vector2.new(a.X,a.Y)-Vector2.new(b.X,b.Y)).Magnitude
+            if not pinchDistance then pinchDistance=math.max(d,1);pinchHeight=height end
+            height=math.clamp(pinchHeight*pinchDistance/math.max(d,1),22,160)
+        end
+        return
+    end
     if input~=touchId or not active or blockedInput() then return end
     local p=input.Position;local now=Vector2.new(p.X,p.Y)
     local delta=now-touchLast;touchLast=now
@@ -446,6 +471,11 @@ UIS.TouchMoved:Connect(function(input,processed)
     focus=focus+Vector3.new(-delta.X,0,-delta.Y*1.16)*scale
 end)
 UIS.TouchEnded:Connect(function(input,processed)
+    fingers[input]=nil;touchCount=0;for _ in pairs(fingers) do touchCount+=1 end
+    if pinching then
+        if touchCount==0 then pinching=false;pinchDistance=nil;touchId=nil;touchStart=nil;touchLast=nil;touchOverGui=nil end
+        return
+    end
     if input~=touchId then return end
     local p=input.Position;local wasGui=touchOverGui
     local duration=os.clock()-touchStartedAt
@@ -462,6 +492,7 @@ end)
 UIS.WindowFocusReleased:Connect(function()
     windowFocused=false;motion={};drag=false
     touchId=nil;touchStart=nil;touchLast=nil;touchMoved=false;touchOverGui=nil
+    fingers={};touchCount=0;pinching=false;pinchDistance=nil
 end)
 UIS.WindowFocused:Connect(function() windowFocused=true end)
 UIS.InputChanged:Connect(function(input,processed)
@@ -531,6 +562,12 @@ player:GetAttributeChangedSignal("ScenePhase"):Connect(function()
         launchCover=false
         -- A launch that failed on the server returns us to the lobby: never leave the wipe up.
         task.delay(.4,function() if not active then transition:reveal() end end)
+    end
+end)
+-- The server asks us to close the curtain before it moves us back to the lobby.
+player:GetAttributeChangedSignal("SceneCover"):Connect(function()
+    if player:GetAttribute("SceneCover") and active and not transition:isActive() then
+        task.spawn(function() transition:cover("BACK TO THE LOBBY","Step on a square to play again") end)
     end
 end)
 player:GetAttributeChangedSignal("Token_Ticket"):Connect(function() if active then refreshBoosts(state) end end)

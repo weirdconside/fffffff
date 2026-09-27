@@ -73,7 +73,7 @@ local function cosmetic(p)
     local head=c:FindFirstChild('Head');if not style or not head then return end
     local folder=Instance.new('Folder');folder.Name='ShopCosmetic';folder.Parent=c
     local tag=Instance.new('BillboardGui');tag.Name='RankTag';tag.Adornee=head;tag.Size=UDim2.fromOffset(96,26);tag.StudsOffset=Vector3.new(0,2.6,0)
-    tag.MaxDistance=90;tag.AlwaysOnTop=false;tag.Parent=folder
+    tag.MaxDistance=90;tag.AlwaysOnTop=true;tag.Parent=folder
     local plate=Instance.new('TextLabel');plate.Size=UDim2.fromScale(1,1);plate.BackgroundColor3=Color3.fromRGB(30,24,20);plate.BackgroundTransparency=.15
     plate.Font=Enum.Font.GothamBlack;plate.TextScaled=true;plate.Text=style.text;plate.TextColor3=style.color;plate.Parent=tag
     local corner=Instance.new('UICorner');corner.CornerRadius=UDim.new(0,6);corner.Parent=plate

@@ -8,7 +8,7 @@ local player=Players.LocalPlayer
 local lobby=Workspace:WaitForChild("LobbyWorld",60)
 if not lobby then return end
 local RANGE=380
-local spinners,flags,sails,npcs,trees,textures={},{},{},{},{},{}
+local spinners,flags,sails,trees,textures={},{},{},{},{}
 local function center(model)
     local ok,cf,size=pcall(function() return model:GetBoundingBox() end)
     if ok then return cf,size end
@@ -32,9 +32,7 @@ end
 for i,p in ipairs(CollectionService:GetTagged("LobbySail")) do
     if p:IsA("BasePart") and p:IsDescendantOf(lobby) then sails[#sails+1]={part=p,base=p.CFrame,seed=i*.7} end
 end
-for i,m in ipairs(CollectionService:GetTagged("LobbyNPC")) do
-    if m:IsA("Model") and m:IsDescendantOf(lobby) then npcs[#npcs+1]={model=m,base=m:GetPivot(),seed=i*2.3} end
-end
+-- Lobby figures (tag LobbyNPC) are statues: they keep their pose and never move.
 for i,m in ipairs(CollectionService:GetTagged("LobbyTree")) do
     if m:IsA("Model") and m:IsDescendantOf(lobby) then
         local cf,size=center(m)
@@ -70,11 +68,6 @@ RunService.RenderStepped:Connect(function(dt)
     end
     if slow<1/20 then return end
     slow=0
-    for _,n in ipairs(npcs) do
-        if n.model.Parent and near(n.base.Position,cam) then
-            n.model:PivotTo(n.base*CFrame.new(0,math.abs(math.sin(clock*1.8+n.seed))*.18,0)*CFrame.Angles(0,math.sin(clock*.5+n.seed)*.12,0))
-        end
-    end
     for _,tr in ipairs(trees) do
         if tr.model.Parent and near(tr.root.Position,cam) then
             local sway=tr.root*CFrame.Angles(math.sin(clock*1.1+tr.seed)*.018,0,math.cos(clock*.9+tr.seed)*.022)*tr.root:Inverse()

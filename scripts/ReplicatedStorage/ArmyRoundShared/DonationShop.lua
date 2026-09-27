@@ -6,6 +6,7 @@ local MarketplaceService=game:GetService('MarketplaceService')
 local TweenService=game:GetService('TweenService')
 local Theme=require(script.Parent.StudTheme)
 local Icons=require(script.Parent.ShopIcons)
+local UISound=require(script.Parent.UISound)
 local C=Theme.Colors
 local Shop={};Shop.__index=Shop
 local W,H=836,586
@@ -77,7 +78,7 @@ function Shop.new(parent,remote,catalog)
     -- ------------------------------------------------------------ shop button
     local holder=make('Frame',gui,'ShopButton',{BackgroundTransparency=1,AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-14,.5,0),Size=UDim2.fromOffset(84,100),ZIndex=5})
     local button=make('TextButton',holder,'Open',{Text='',AutoButtonColor=false,AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,0,4),Size=UDim2.fromOffset(72,72),ZIndex=6,Rotation=-4})
-    Theme.skin(button,ROYAL)
+    Theme.skin(button,ROYAL);button:SetAttribute('UISound','open')
     local shine=make('Frame',button,'Shine',{BackgroundColor3=Color3.new(1,1,1),Size=UDim2.fromScale(1,1),ZIndex=12,BorderSizePixel=0});round(shine,UDim.new(0,5))
     local grad=make('UIGradient',shine,'Sweep',{Rotation=25,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.42,1),NumberSequenceKeypoint.new(.5,.55),NumberSequenceKeypoint.new(.58,1),NumberSequenceKeypoint.new(1,1)}),Offset=Vector2.new(-1,0)})
     crownGlyph(button,8)
@@ -244,7 +245,9 @@ function Shop:applyState(payload)
     self.tokens=type(payload.tokens)=='table' and payload.tokens or {}
     if payload.studio~=nil then self.studio=payload.studio==true end
     if payload.message then
-        self.status.Text=payload.message;self.status.TextColor3=C.Gold
+        local m=payload.message
+        if m:find('granted') or m:find('Thank you') or m:find('Unlocked') then UISound.play('success') end
+        self.status.Text=m;self.status.TextColor3=C.Gold
         TweenService:Create(self.status,TweenInfo.new(1.2),{TextColor3=C.White}):Play()
     end
     self:refresh()

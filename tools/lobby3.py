@@ -50,18 +50,19 @@ def lantern(parent, pos, glow_src=None):
     part(m, 'Base', (1.6, 0.6, 1.6), at(x, y + 0.3, z), (70, 72, 82), variant='2022 Stud', collide=False)
     part(m, 'Cap', (1.9, 0.4, 1.9), at(x, y + 8.4, z), (58, 44, 34), variant='Studs', collide=False)
     lamp = part(m, 'Lamp', (1.2, 1.3, 1.2), at(x, y + 7.55, z), (255, 214, 133), material='Neon', collide=False)
-    light(lamp, (255, 214, 133), 14, 2)
+    light(lamp, (255, 214, 133), 11, 0.9)
     if glow_src is not None:
         g = copy.deepcopy(glow_src)
         for it in g.iter('Item'): it.set('referent', new_ref())
         lamp.append(g)
     return m
 
-def path(parent, a, b, w):
+def path(parent, a, b, w, layer=0):
     dx, dz = b[0] - a[0], b[1] - a[1]
     length = math.hypot(dx, dz)
     yaw = -math.degrees(math.atan2(dz, dx))
-    part(parent, 'Path', (length, 0.3, w), at((a[0] + b[0]) / 2, TOP + 0.15, (a[1] + b[1]) / 2) * ry(yaw), (150, 112, 74),
+    # each path sits on its own height layer so crossing paths never z-fight
+    part(parent, 'Path', (length, 0.3, w), at((a[0] + b[0]) / 2, TOP + 0.15 + layer * 0.06, (a[1] + b[1]) / 2) * ry(yaw), (150, 112, 74),
          variant='2022 Weld', collide=False, query=False)
     return length
 
@@ -90,8 +91,9 @@ def build(tree):
     for qr in [(3, -2), (3, -1), (2, 1), (3, 0)]:
         tiles[qr] = 0
     L.build_tiles(ctx, scen, tiles)
+    # only the top water sheet: the bottom sheet sat 0.001 studs below and flickered
     oc = clone(ctx.ocean, at(0, WATER, 0), read_cf(getp(child(ctx.ocean, 'OceanTop'), 'CFrame')).t, s=1.0,
-               collide=False, name='Ocean')
+               collide=False, name='Ocean', drop=lambda it: name_of(it) == 'OceanBottom')
     scen.append(oc)
     part(scen, 'SeaFloor', (2000, 2, 2000), at(0, WATER - 7, 0), (40, 120, 200), transparency=1, collide=True,
          query=False, shadow=False)
@@ -117,6 +119,9 @@ def build(tree):
         beam = read_cf(getp(child(src, 'BeamPart'), 'CFrame')).t
         dst = np.array([x, TOP + 0.24, z])
         m = translate_clone(src, dst - beam, 0, beam)
+        for it in m.iter('Item'):
+            if it.get('class') == 'PointLight':      # softer: no glowing players on the square
+                set_prop(it, 'Brightness', 'float', 0.9)
         rooms.append(m)
     # ------------------------------------------------------------ original shop + shopkeeper
     osc = child(ol, 'Scenery')
@@ -130,8 +135,6 @@ def build(tree):
     shop = model(scen, 'Shop')
     for g in shop_group:
         shop.append(translate_clone(g, np.array([SHOP_POS[0], TOP, SHOP_POS[1]]) - pivot, yaw, pivot))
-    part(shop, 'ShopFloor', (22, 0.3, 18), at(SHOP_POS[0], TOP + 0.15, SHOP_POS[1]) * ry(yaw), (132, 120, 104),
-         variant='2022 Stud', collide=False, query=False)
 
     # ------------------------------------------------------------ fireflies over the island (from the original lobby)
     fx = folder(scen, 'Atmosphere')
@@ -160,9 +163,9 @@ def build(tree):
     deco = folder(scen, 'Details')
     lamps = []
     ends = [(x - 10, z) for (x, z) in ROOMS] + [(SHOP_POS[0] - 4, SHOP_POS[1] + 8)]
-    for (ex, ez) in ends:
+    for layer, (ex, ez) in enumerate(ends):
         a = (SPAWN[0] + 6, SPAWN[1]); b = (ex, ez)
-        length = path(deco, a, b, 7)
+        length = path(deco, a, b, 7, layer)
         n = max(1, int(length // 22))
         dx, dz = (b[0] - a[0]) / length, (b[1] - a[1]) / length
         for k in range(1, n + 1):
@@ -255,19 +258,19 @@ def build(tree):
         d_spawn = math.hypot(cx - SPAWN[0], cz - SPAWN[1])
         n = 0 if d_spawn < 30 else (1 if d_spawn < 60 else (3 if land_tiles[qr] == 0 else 6))
         for _ in range(n):
-            spot = free_spot(cx, cz, 3, 17, 3.5)
+            spot = free_spot(cx, cz, 3, 17, 5)
             if not spot: continue
             x, z = spot
             s = rnd.uniform(5.0, 8.0)
             place_asset(ctx, nature, tree_src, (x, TOP + lift_at(x, z) * 6.0, z), yaw=rnd.uniform(0, 360), s=s,
                         name='Pine Tree', collide=False, box=True, box_shrink=0.3, tags=['LobbyTree'])
-            taken.append((x, z, 3))
+            taken.append((x, z, 4.5))
     for kind, n in (('Stone', 16), ('Iron Ore', 8), ('Crystal', 10)):
         src = child(ctx.resources, kind)
         for _ in range(n):
             qr = rnd.choice(list(land_tiles))
             cx, cz = hex_center(*qr)
-            spot = free_spot(cx, cz, 3, 17, 2.5)
+            spot = free_spot(cx, cz, 3, 17, 4)
             if not spot: continue
             x, z = spot
             place_asset(ctx, nature, src, (x, TOP + lift_at(x, z) * 6.0, z), yaw=rnd.uniform(0, 360), s=rnd.uniform(2.6, 4.0),
@@ -280,6 +283,38 @@ def build(tree):
         place_asset(ctx, sea, ctx.rocks[k % len(ctx.rocks)], (x, WATER - 3, z), yaw=yaw_r, s=s, name='SeaRock', collide=False, box=False)
     for k, (x, z, yaw_s) in enumerate([(-128, -40, 90), (-125, 45, 80), (-92, 102, 45), (-50, 128, 10), (18, 128, -20),
                                        (-72, -100, 130), (-20, -140, 170), (40, -128, 200), (128, 60, -60), (125, -60, 250)]):
-        place_asset(ctx, sea, ctx.sands[k % len(ctx.sands)], (x, WATER - 0.9, z), yaw=yaw_s, s=1.25, name='Beach', collide=False, box=False)
+        place_asset(ctx, sea, ctx.sands[k % len(ctx.sands)], (x, WATER - 0.9 + k * 0.05, z), yaw=yaw_s, s=1.25, name='Beach', collide=False, box=False)
+    removed = remove_overlaps(lobby)
+    print('overlap pass removed', removed, 'models')
     spawn_cf = at(SPAWN[0], TOP + 0.1, SPAWN[1]) * ry(-90)
     return lobby, ctx, tiles, spawn_cf
+
+PRIORITY = ['NativeTeleporters', 'Shop', 'Village', 'Garrison', 'Props', 'Details', 'Nature']
+def remove_overlaps(lobby):
+    """Drop lower-priority models whose footprint intersects a kept model (no props growing into each other)."""
+    groups = {}
+    for f in lobby.iter('Item'):
+        if f.get('class') in ('Folder', 'Model') and name_of(f) in PRIORITY and f.getparent() is not None:
+            groups[name_of(f)] = f
+    kept = []   # (lo, hi)
+    removed = 0
+    for g in PRIORITY:
+        f = groups.get(g)
+        if f is None: continue
+        members = [m for m in f.findall('Item') if m.get('class') == 'Model'] if g not in ('Shop',) else [f]
+        for m in members:
+            lo, hi = world_bbox(m)
+            if not np.all(np.isfinite(lo)): continue
+            shrink = (hi - lo) * 0.12
+            lo2, hi2 = lo + shrink, hi - shrink
+            clash = False
+            for (a, b) in kept:
+                ox = min(hi2[0], b[0]) - max(lo2[0], a[0]); oz = min(hi2[2], b[2]) - max(lo2[2], a[2])
+                oy = min(hi2[1], b[1]) - max(lo2[1], a[1])
+                if ox > 0 and oz > 0 and oy > 0:
+                    clash = True; break
+            if clash and g not in ('NativeTeleporters', 'Shop'):
+                m.getparent().remove(m); removed += 1
+            else:
+                kept.append((lo2, hi2))
+    return removed
