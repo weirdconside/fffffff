@@ -243,7 +243,7 @@ function Shop:refresh()
         elseif self.owner then b.Text='FREE';b.BackgroundColor3=C.Green;b.TextColor3=C.White
         elseif not self.catalog.configured(item) then
             b.Text=self.studio and ('TEST R$ '..item.price) or 'SOON';b.BackgroundColor3=self.studio and C.Blue or C.Dark;b.TextColor3=C.White
-        else b.Text='R$ '..tostring(self.prices[key] or item.price);b.BackgroundColor3=C.Green;b.TextColor3=C.White end
+        else b.Text=self.prices[key] and ('R$ '..tostring(self.prices[key])) or 'BUY';b.BackgroundColor3=C.Green;b.TextColor3=C.White end
     end
 end
 function Shop:buy(item)

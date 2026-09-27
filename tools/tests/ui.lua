@@ -19,7 +19,7 @@ section("DonationShop",function()
     for key,card in pairs(shop.cards) do card.buy.Activated:Fire() end
     assert(#fired>0,"buy fired nothing")
     shop:setAvailable(false);shop:setAvailable(true);shop:setIntro(true);shop:setIntro(false);shop:closeShop()
-    assert(shop.cards.VIP.buy.Text=="OWNED",shop.cards.VIP.buy.Text);assert(shop.cards.Admin.buy.Text:find("TEST"),shop.cards.Admin.buy.Text)
+    assert(shop.cards.VIP.buy.Text=="OWNED",shop.cards.VIP.buy.Text);assert(shop.cards.Admin.buy.Text:find("R%$") or shop.cards.Admin.buy.Text=="BUY",shop.cards.Admin.buy.Text)
     assert(shop.wallet.Text=="3",shop.wallet.Text)
     shop:applyState({passes={VIP=true,Admin=true,Owner=true},tokens={Ticket=5},owner=true})
     assert(shop.cards.Ticket7.buy.Text=="FREE" and shop.cards.Admin.buy.Text=="OWNED","owner shop buttons")

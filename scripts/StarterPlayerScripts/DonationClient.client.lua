@@ -41,7 +41,7 @@ remote.OnClientEvent:Connect(function(kind,payload)
     end
 end)
 remote:FireServer('State')
--- OWNER plates over the head gently float and shimmer (client-side only).
+-- Rank plates (OWNER / ADMIN / VIP) over the head gently float and shimmer (client-side only).
 local ownerClock,ownerTick=0,0
 RunService.RenderStepped:Connect(function(dt)
     ownerClock+=dt;ownerTick+=dt
@@ -52,7 +52,7 @@ RunService.RenderStepped:Connect(function(dt)
         local folder=c and c:FindFirstChild('ShopCosmetic')
         local tag=folder and folder:FindFirstChild('RankTag')
         if tag and tag:GetAttribute('OwnerTag') then
-            tag.StudsOffset=Vector3.new(0,3.6+math.sin(ownerClock*2.2)*.15,0)
+            tag.StudsOffset=Vector3.new(0,3.2+math.sin(ownerClock*2.2)*.15,0)
             local face=tag:FindFirstChild('Face');local shine=face and face:FindFirstChild('Shine')
             if shine then shine.Offset=Vector2.new(0,math.sin(ownerClock*3)*.18) end
         end

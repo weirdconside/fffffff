@@ -70,24 +70,26 @@ local function publicState(p,message)
     remote:FireClient(p,'State',{passes=s.passes,tokens=s.tokens,tipped=s.tipped,studio=STUDIO,owner=s.owner==true,message=message})
 end
 -- Lobby-only name plate for pass owners (OWNER > ADMIN > VIP).
-local PLATES={Admin={text='ADMIN',color=Color3.fromRGB(255,90,80)},VIP={text='VIP',color=Color3.fromRGB(90,230,140)}}
 local FREDOKA=Font.new('rbxasset://fonts/families/FredokaOne.json',Enum.FontWeight.Bold,Enum.FontStyle.Normal)
--- Big chunky "OWNER" over the head: gold letters with an ink outline, a dark
--- drop shadow and a crown. Sized in studs so it reads like part of the world.
-local function ownerPlate(folder,head)
-    local tag=Instance.new('BillboardGui');tag.Name='RankTag';tag.Adornee=head;tag.Size=UDim2.new(8,0,3,0);tag.StudsOffset=Vector3.new(0,3.6,0)
+-- Big chunky rank plates over the head (OWNER > ADMIN > VIP): same font and
+-- size for all three, only the colours differ. Sized in studs so they read
+-- like part of the world.
+local PLATES={
+    Owner={text='OWNER',top=Color3.fromRGB(255,244,160),mid=Color3.fromRGB(255,204,58),bottom=Color3.fromRGB(255,120,30),shadow=Color3.fromRGB(140,40,10)},
+    Admin={text='ADMIN',top=Color3.fromRGB(255,170,160),mid=Color3.fromRGB(255,70,60),bottom=Color3.fromRGB(190,20,30),shadow=Color3.fromRGB(90,10,14)},
+    VIP={text='VIP',top=Color3.fromRGB(190,255,200),mid=Color3.fromRGB(70,220,120),bottom=Color3.fromRGB(20,150,80),shadow=Color3.fromRGB(10,70,40)},
+}
+local function rankPlate(folder,head,style,animated)
+    local tag=Instance.new('BillboardGui');tag.Name='RankTag';tag.Adornee=head;tag.Size=UDim2.new(8,0,2,0);tag.StudsOffset=Vector3.new(0,3.2,0)
     tag.MaxDistance=180;tag.AlwaysOnTop=true;tag.LightInfluence=0;tag:SetAttribute('OwnerTag',true);tag.Parent=folder
-    local crown=Instance.new('TextLabel');crown.Name='Crown';crown.BackgroundTransparency=1;crown.Size=UDim2.fromScale(1,.36);crown.Text=utf8.char(0x1F451)
-    crown.TextScaled=true;crown.Parent=tag
-    local shadow=Instance.new('TextLabel');shadow.Name='Shadow';shadow.BackgroundTransparency=1;shadow.Position=UDim2.fromScale(.012,.4);shadow.Size=UDim2.fromScale(1,.6)
-    shadow.FontFace=FREDOKA;shadow.TextScaled=true;shadow.Text='OWNER';shadow.TextColor3=Color3.fromRGB(140,40,10);shadow.Parent=tag
+    local shadow=Instance.new('TextLabel');shadow.Name='Shadow';shadow.BackgroundTransparency=1;shadow.Position=UDim2.fromScale(.012,.08);shadow.Size=UDim2.fromScale(1,.92)
+    shadow.FontFace=FREDOKA;shadow.TextScaled=true;shadow.Text=style.text;shadow.TextColor3=style.shadow;shadow.Parent=tag
     local ss=Instance.new('UIStroke');ss.Color=Color3.fromRGB(34,27,20);ss.Thickness=3;ss.Parent=shadow
-    local face=Instance.new('TextLabel');face.Name='Face';face.BackgroundTransparency=1;face.Position=UDim2.fromScale(0,.35);face.Size=UDim2.fromScale(1,.6)
-    face.FontFace=FREDOKA;face.TextScaled=true;face.Text='OWNER';face.TextColor3=Color3.new(1,1,1);face.Parent=tag
+    local face=Instance.new('TextLabel');face.Name='Face';face.BackgroundTransparency=1;face.Size=UDim2.fromScale(1,.92)
+    face.FontFace=FREDOKA;face.TextScaled=true;face.Text=style.text;face.TextColor3=Color3.new(1,1,1);face.Parent=tag
     local fs=Instance.new('UIStroke');fs.Color=Color3.fromRGB(34,27,20);fs.Thickness=3.5;fs.Parent=face
     local shine=Instance.new('UIGradient');shine.Name='Shine';shine.Rotation=90
-    shine.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(255,244,160)),ColorSequenceKeypoint.new(.45,Color3.fromRGB(255,204,58)),
-        ColorSequenceKeypoint.new(1,Color3.fromRGB(255,120,30))})
+    shine.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,style.top),ColorSequenceKeypoint.new(.45,style.mid),ColorSequenceKeypoint.new(1,style.bottom)})
     shine.Parent=face
 end
 local function cosmetic(p)
@@ -96,19 +98,10 @@ local function cosmetic(p)
     if p:GetAttribute('ScenePhase')=='Round' then return end
     local s=sessions[p]
     local head=c:FindFirstChild('Head');if not head then return end
-    if s and s.owner then
-        local folder=Instance.new('Folder');folder.Name='ShopCosmetic';folder.Parent=c
-        ownerPlate(folder,head);return
-    end
-    local style=(Perks.has(p,'Admin') and PLATES.Admin) or (Perks.has(p,'VIP') and PLATES.VIP)
+    local style=(s and s.owner and PLATES.Owner) or (Perks.has(p,'Admin') and PLATES.Admin) or (Perks.has(p,'VIP') and PLATES.VIP)
     if not style then return end
     local folder=Instance.new('Folder');folder.Name='ShopCosmetic';folder.Parent=c
-    local tag=Instance.new('BillboardGui');tag.Name='RankTag';tag.Adornee=head;tag.Size=UDim2.fromOffset(96,26);tag.StudsOffset=Vector3.new(0,2.6,0)
-    tag.MaxDistance=90;tag.AlwaysOnTop=true;tag.Parent=folder
-    local plate=Instance.new('TextLabel');plate.Size=UDim2.fromScale(1,1);plate.BackgroundColor3=Color3.fromRGB(30,24,20);plate.BackgroundTransparency=.15
-    plate.Font=Enum.Font.GothamBlack;plate.TextScaled=true;plate.Text=style.text;plate.TextColor3=style.color;plate.Parent=tag
-    local corner=Instance.new('UICorner');corner.CornerRadius=UDim.new(0,6);corner.Parent=plate
-    local stroke=Instance.new('UIStroke');stroke.Color=style.color;stroke.Thickness=1.5;stroke.ApplyStrokeMode=Enum.ApplyStrokeMode.Border;stroke.Parent=plate
+    rankPlate(folder,head,style)
 end
 local function checkPasses(p)
     local s=sessions[p];if not s then return end

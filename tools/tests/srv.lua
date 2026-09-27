@@ -64,6 +64,11 @@ donation.OnServerEvent:Fire(localPlayer,"Buy","Ticket7");clockValue=clockValue+1
 donation.OnServerEvent:Fire(localPlayer,"Buy","VIP");clockValue=clockValue+1
 for _,m in ipairs(dmsgs) do if m[1]=="State" then print("state msg:",m[2].message,"tickets:",m[2].tokens.Ticket) elseif m[1]=="Thanks" then print("thanks:",m[2].name,m[2].amount) end end
 local Perks=require(__inst.Perks)
+print("prompted ids:",table.concat(prompted,","))
+assert(#prompted>=3,"real ids open the Roblox purchase prompts")
+-- a finished product purchase is granted through ProcessReceipt
+local grant=mps.ProcessReceipt({ProductId=3715146126,PlayerId=localPlayer.UserId,PurchaseId="p1"})
+assert(grant==Enum.ProductPurchaseDecision.PurchaseGranted,"receipt granted")
 print("perks:",Perks.has(localPlayer,"VIP"),Perks.has(localPlayer,"Admin"),"tickets:",Perks.tokens(localPlayer,"Ticket"),"attr:",localPlayer:GetAttribute("Token_Ticket"))
 assert(Perks.consume(localPlayer,"Ticket"));print("after consume:",Perks.tokens(localPlayer,"Ticket"))
 -- ProcessReceipt without datastore (studio path)
