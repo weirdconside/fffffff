@@ -22,18 +22,19 @@ for i,uid in ipairs({"1","-1"}) do
     for key,d in pairs(Data.ResourceNodes) do L.nodes[key]={x=d.pos.x+i*300,y=L.lands[d.land].y,z=d.pos.z} end
     layouts[uid]=L
 end
-local s=State.new(Data,layouts,{},{},{names={["1"]="Tester",["-1"]="Bot"},bots={["-1"]=true},colors={},perks={["1"]={VetoPower=true}}})
+local s=State.new(Data,layouts,{},{},{names={["1"]="Tester",["-1"]="Bot"},bots={["-1"]=true},colors={},perks={["1"]={VIP=true}},tickets={["1"]=1}})
 localPlayer:SetAttribute("RoundHome",Vector3.new(0,0,0));localPlayer:SetAttribute("RoundBoundsMin",Vector3.new(-100,0,-100));localPlayer:SetAttribute("RoundBoundsMax",Vector3.new(100,0,100))
 localPlayer:SetAttribute("RoundModel","ArmyRound_x");localPlayer:SetAttribute("RoundToken","tok");localPlayer:SetAttribute("ScenePhase","Round")
 frames(60)
 local seq=0
 local function push(msg) seq=seq+1;local snap=State.snapshot(s,"1");snap.token="tok";snap.sequence=seq;snap.message=msg;snapshots.OnClientEvent:Fire(snap) end
 push("hello");frames(5)
-localPlayer:SetAttribute("Token_AdminToken",2);frames(2)
+localPlayer:SetAttribute("Token_Ticket",2);frames(2)
 local boost=playerGui:FindFirstChild("RoundBoosts");assert(boost and boost.Enabled,"boost gui")
-local btn=boost:FindFirstChild("AdminToken",true);assert(btn and btn.Visible,"token button visible")
-btn.Activated:Fire();assert(sent[#sent][2]=="UseToken","use token sent")
-State.useToken(s,"1","AdminToken");push(nil);frames(5)
+local btn=boost:FindFirstChild("Ticket",true);assert(btn and btn.Visible,"ticket button visible");print("   ticket btn:",btn.Text)
+btn.Activated:Fire();assert(sent[#sent][2]=="UseTicket","use ticket sent")
+State.useTicket(s,"1");push(nil);frames(5)
+print("   timer:",boost:FindFirstChild("AdminTimer",true).Caption.Text)
 for i=1,200 do State.step(s,.1) end
 push(nil);frames(5)
 s.players["1"].armyBoostUntil=s.elapsed+10;push(nil);frames(2)

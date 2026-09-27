@@ -1,4 +1,4 @@
--- Server-only perk registry shared by DonationServer (ownership/persistence)
+-- Server-only perk registry (VIP / ADMIN passes, saved tickets) shared by DonationServer (ownership/persistence)
 -- and RoundServer (round effects). Clients only ever see mirrored attributes.
 local Perks={}
 local sessions={}

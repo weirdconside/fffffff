@@ -113,6 +113,32 @@ function BUILD.Chest(m)
     part(m,Vector3.new(.25,1.35,1.2),CFrame.new(0,-.12,0),GOLD)
     for i=1,5 do part(m,Vector3.new(.08,.35,.35),CFrame.new(-.6+i*.22,.65+(i%2)*.1,.1)*CFrame.Angles(0,math.pi/2,.3*i)*up,GOLD,CYL) end
 end
+local function ticket(m,cf,s)
+    local base=Color3.fromRGB(255,206,64)
+    part(m,Vector3.new(2.1,1.05,.08)*s,cf,base)
+    part(m,Vector3.new(1.9,.85,.1)*s,cf,Color3.fromRGB(255,232,140))
+    part(m,Vector3.new(1.7,.65,.11)*s,cf,base)
+    for _,x in ipairs({-1.05,1.05}) do part(m,Vector3.new(.3,.3,.14)*s,cf*CFrame.new(x*s,0,0),Color3.fromRGB(60,40,20),BALL) end
+    for i=-2,2 do part(m,Vector3.new(.05,.05,.12)*s,cf*CFrame.new(.55*s,i*.14*s,0),WHITE,BALL) end
+    for _,a in ipairs({0,math.pi/4}) do part(m,Vector3.new(.34,.34,.13)*s,cf*CFrame.new(-.2*s,0,0)*CFrame.Angles(0,0,a),Color3.fromRGB(226,52,48)) end
+end
+function BUILD.Ticket(m,options)
+    local n=math.clamp(math.floor((options and options.count or 1)),1,20)
+    local shown=n>=20 and 6 or n>=10 and 5 or n>=7 and 4 or n>=3 and 3 or 1
+    for i=1,shown do
+        local k=i-(shown+1)/2
+        ticket(m,CFrame.new(k*.12,k*.05,-i*.03)*CFrame.Angles(0,-.35,k*.22),shown>1 and .82 or 1)
+    end
+end
+function BUILD.Gavel(m)
+    local wood=Color3.fromRGB(150,86,44);local dark=Color3.fromRGB(96,52,26)
+    local tilt=CFrame.Angles(0,.3,-.6)
+    part(m,Vector3.new(2.1,.22,.22),tilt*CFrame.new(-.2,0,0),wood,CYL)
+    part(m,Vector3.new(1.3,.72,.72),tilt*CFrame.new(.85,0,0)*CFrame.Angles(0,math.pi/2,0),dark,CYL)
+    for _,z in ipairs({-.45,.45}) do part(m,Vector3.new(.14,.78,.78),tilt*CFrame.new(.85,0,z)*CFrame.Angles(0,math.pi/2,0),GOLD,CYL) end
+    part(m,Vector3.new(1.3,.22,.9),CFrame.new(.1,-.95,.2),dark)
+    part(m,Vector3.new(1.1,.08,.7),CFrame.new(.1,-.82,.2),GOLD)
+end
 function BUILD.Shop(m)
     crown(m,1.25)
 end
@@ -125,7 +151,7 @@ function Icons.build(parent,kind,options)
     local world=Instance.new('WorldModel');world.Name='Geometry';world.Parent=view
     local model=Instance.new('Model');model.Name='Glyph';model.Parent=world
     local builder=BUILD[kind] or BUILD.Crown
-    builder(model)
+    builder(model,options)
     local camera=Instance.new('Camera');camera.FieldOfView=options.fov or 32
     camera.CFrame=CFrame.lookAt(Vector3.new(2.4,1.7,4.4)*(options.distance or 1),Vector3.new(0,0,0));camera.Parent=view;view.CurrentCamera=camera
     model.WorldPivot=CFrame.new()

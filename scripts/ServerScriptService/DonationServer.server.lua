@@ -1,4 +1,4 @@
--- Admin Vault: Robux-only purchases. Ownership, tokens and receipts are decided
+-- Admin Shop: Robux-only purchases. Ownership, tokens and receipts are decided
 -- here on the server; the client only asks to open a Roblox purchase prompt.
 local Players=game:GetService('Players')
 local ReplicatedStorage=game:GetService('ReplicatedStorage')
@@ -18,7 +18,7 @@ local RECEIPT_KEEP=60
 local store=nil
 if not STUDIO then
     local ok,got=pcall(function() return DataStoreService:GetDataStore('BattleAdminVault_v2') end)
-    if ok then store=got else warn('[AdminVault] DataStore unavailable: '..tostring(got)) end
+    if ok then store=got else warn('[AdminShop] DataStore unavailable: '..tostring(got)) end
 end
 local sessions,rate={},{}
 local function retry(fn)
@@ -29,7 +29,7 @@ local function retry(fn)
     end
     return false,last
 end
-local function blank() return {passes={},tokens={AdminToken=0,SupplyDrop=0},tipped=0,loaded=false} end
+local function blank() return {passes={},tokens={Ticket=0},tipped=0,loaded=false} end
 local function readTokens(data,s)
     if type(data)=='table' and type(data.tokens)=='table' then
         for key in pairs(Catalog.Tokens) do
@@ -54,7 +54,7 @@ local function save(p)
             old.version=2;return old
         end)
     end)
-    if not ok then s.dirty=true;warn('[AdminVault] Save failed for '..p.Name..': '..tostring(err)) end
+    if not ok then s.dirty=true;warn('[AdminShop] Save failed for '..p.Name..': '..tostring(err)) end
     return ok
 end
 Perks.persist=save
@@ -63,21 +63,21 @@ local function publicState(p,message)
     Perks.refresh(p)
     remote:FireClient(p,'State',{passes=s.passes,tokens=s.tokens,tipped=s.tipped,studio=STUDIO,message=message})
 end
--- Lobby-only cosmetic for Admin Pass owners: gold outline + [ADMIN] plate.
+-- Lobby-only name plate for pass owners (ADMIN wins over VIP).
+local PLATES={Admin={text='ADMIN',color=Color3.fromRGB(255,90,80)},VIP={text='VIP',color=Color3.fromRGB(90,230,140)}}
 local function cosmetic(p)
     local c=p.Character;if not c then return end
-    local old=c:FindFirstChild('AdminVaultCosmetic');if old then old:Destroy() end
-    if not Perks.has(p,'AdminPass') or p:GetAttribute('ScenePhase')=='Round' then return end
-    local head=c:FindFirstChild('Head');if not head then return end
-    local folder=Instance.new('Folder');folder.Name='AdminVaultCosmetic';folder.Parent=c
-    local glow=Instance.new('Highlight');glow.Adornee=c;glow.FillColor=Color3.fromRGB(255,214,74);glow.FillTransparency=.9
-    glow.OutlineColor=Color3.fromRGB(255,214,74);glow.OutlineTransparency=.15;glow.DepthMode=Enum.HighlightDepthMode.Occluded;glow.Parent=folder
-    local tag=Instance.new('BillboardGui');tag.Name='AdminTag';tag.Adornee=head;tag.Size=UDim2.fromOffset(120,26);tag.StudsOffset=Vector3.new(0,2.6,0)
+    local old=c:FindFirstChild('ShopCosmetic');if old then old:Destroy() end
+    if p:GetAttribute('ScenePhase')=='Round' then return end
+    local style=(Perks.has(p,'Admin') and PLATES.Admin) or (Perks.has(p,'VIP') and PLATES.VIP)
+    local head=c:FindFirstChild('Head');if not style or not head then return end
+    local folder=Instance.new('Folder');folder.Name='ShopCosmetic';folder.Parent=c
+    local tag=Instance.new('BillboardGui');tag.Name='RankTag';tag.Adornee=head;tag.Size=UDim2.fromOffset(96,26);tag.StudsOffset=Vector3.new(0,2.6,0)
     tag.MaxDistance=90;tag.AlwaysOnTop=false;tag.Parent=folder
-    local plate=Instance.new('TextLabel');plate.Size=UDim2.fromScale(1,1);plate.BackgroundColor3=Color3.fromRGB(40,30,10);plate.BackgroundTransparency=.2
-    plate.Font=Enum.Font.GothamBlack;plate.TextScaled=true;plate.Text='ADMIN';plate.TextColor3=Color3.fromRGB(255,214,74);plate.Parent=tag
+    local plate=Instance.new('TextLabel');plate.Size=UDim2.fromScale(1,1);plate.BackgroundColor3=Color3.fromRGB(30,24,20);plate.BackgroundTransparency=.15
+    plate.Font=Enum.Font.GothamBlack;plate.TextScaled=true;plate.Text=style.text;plate.TextColor3=style.color;plate.Parent=tag
     local corner=Instance.new('UICorner');corner.CornerRadius=UDim.new(0,6);corner.Parent=plate
-    local stroke=Instance.new('UIStroke');stroke.Color=Color3.fromRGB(255,214,74);stroke.Thickness=1.5;stroke.ApplyStrokeMode=Enum.ApplyStrokeMode.Border;stroke.Parent=plate
+    local stroke=Instance.new('UIStroke');stroke.Color=style.color;stroke.Thickness=1.5;stroke.ApplyStrokeMode=Enum.ApplyStrokeMode.Border;stroke.Parent=plate
 end
 local function checkPasses(p)
     local s=sessions[p];if not s then return end
@@ -93,7 +93,7 @@ local function onPlayer(p)
     local s=blank();sessions[p]=s
     if store then
         local ok,data=retry(function() return store:GetAsync(key(p)) end)
-        if ok then readTokens(data,s);s.loaded=true else warn('[AdminVault] Could not load '..p.Name..'; tokens are read-only this session') end
+        if ok then readTokens(data,s);s.loaded=true else warn('[AdminShop] Could not load '..p.Name..'; tokens are read-only this session') end
     else
         s.loaded=true
     end
@@ -107,16 +107,12 @@ local function grantPass(p,item,message)
     local s=sessions[p];if not s then return end
     s.passes[item.key]=true;cosmetic(p);publicState(p,message or ('Unlocked '..item.title..'!'))
 end
-local function thank(p,item)
-    remote:FireAllClients('Thanks',{name=p.DisplayName,amount=item.grant.tip,title=item.title})
-end
 -- Studio-only simulated purchase, so every card is testable before publishing.
 local function studioGrant(p,item)
     local s=sessions[p]
     if item.kind=='Pass' then return grantPass(p,item,'STUDIO TEST: '..item.title..' granted.') end
     local g=item.grant or {}
     if g.token then s.tokens[g.token]=(s.tokens[g.token] or 0)+(g.amount or 1) end
-    if g.tip then s.tipped=s.tipped+g.tip;thank(p,item) end
     publicState(p,'STUDIO TEST: '..item.title..' granted.')
 end
 remote.OnServerEvent:Connect(function(p,op,itemKey)
@@ -174,7 +170,7 @@ MarketplaceService.ProcessReceipt=function(receipt)
             end)
         end)
         if not ok or type(result)~='table' then
-            warn('[AdminVault] Receipt deferred: '..tostring(result));return Enum.ProductPurchaseDecision.NotProcessedYet
+            warn('[AdminShop] Receipt deferred: '..tostring(result));return Enum.ProductPurchaseDecision.NotProcessedYet
         end
         -- Spent-but-unsaved tokens stay spent: never raise above the session's spend.
         local before={};for k,v in pairs(s.tokens) do before[k]=v end
@@ -185,7 +181,6 @@ MarketplaceService.ProcessReceipt=function(receipt)
         if g.token then s.tokens[g.token]=(s.tokens[g.token] or 0)+(g.amount or 1) end
         if g.tip then s.tipped=s.tipped+g.tip end
     end
-    if g.tip then thank(p,item) end
     publicState(p,'Thank you! '..item.title..' delivered.')
     return Enum.ProductPurchaseDecision.PurchaseGranted
 end

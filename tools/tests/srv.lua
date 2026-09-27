@@ -12,6 +12,9 @@ for i=1,3 do
     local m=Instance.new("Model");m.Name="Teleporter"..i;m.Parent=nt
     local b=Instance.new("Part");b.Name="BeamPart";b.CFrame=CFrame.new(100,6,(i-2)*68);b.Size=Vector3.new(29,0.2,12);b.Parent=m
     local h=Instance.new("Part");h.Name="BillboardHolder";h.Parent=m
+    local bb=Instance.new("BillboardGui");bb.Parent=h
+    local pl=Instance.new("TextLabel");pl.Name="Players";pl.Parent=bb
+    local tm=Instance.new("TextLabel");tm.Name="Timer";tm.Parent=bb
     local l=Instance.new("Part");l.Name="LeaveHere";l.CFrame=CFrame.new(88,8,(i-2)*68);l.Parent=m
 end
 local spawnPart=Instance.new("SpawnLocation");spawnPart.Name="LobbySpawn";spawnPart.CFrame=CFrame.new(-8,5,0);spawnPart.Parent=workspace
@@ -37,8 +40,7 @@ local ok2,e2=pcall(__scripts.DonationServer);if not ok2 then report("DonationSer
 playersService.PlayerAdded:Fire(localPlayer)
 local function beats(n) for i=1,n do clockValue=clockValue+0.05;runService.Heartbeat:Fire(0.05);runDeferred(clockValue) end end
 beats(20)
-local sign=nt.Teleporter1.BillboardHolder:FindFirstChild("ShipSign")
-assert(sign,"ship sign created")
+local sign=nt.Teleporter1.BillboardHolder
 print("sign players:",sign:FindFirstChild("Players",true).Text,"| status:",sign:FindFirstChild("Timer",true).Text)
 -- the player is on ship 1 -> host picker snapshot
 local last;for _,m in ipairs(toClient) do if m.lobby then last=m end end
@@ -53,17 +55,17 @@ print("after leave, player at",hrp.Position)
 hrp.Position=Vector3.new(0,-4,0);hrp.CFrame=CFrame.new(0,-4,0);beats(6)
 print("after sea return, player at",hrp.Position)
 -- use token outside a round is ignored
-cmd.OnServerEvent:Fire(localPlayer,"x","UseToken",{kind="AdminToken"})
+cmd.OnServerEvent:Fire(localPlayer,"x","UseTicket",{})
 -- donation flows (Studio test grants)
 beats(10)
-donation.OnServerEvent:Fire(localPlayer,"Buy","AdminPass");clockValue=clockValue+1
-donation.OnServerEvent:Fire(localPlayer,"Buy","AdminToken5");clockValue=clockValue+1
-donation.OnServerEvent:Fire(localPlayer,"Buy","TipLarge");clockValue=clockValue+1
-donation.OnServerEvent:Fire(localPlayer,"Buy","AdminPass");clockValue=clockValue+1
-for _,m in ipairs(dmsgs) do if m[1]=="State" then print("state msg:",m[2].message,"tokens:",m[2].tokens.AdminToken) elseif m[1]=="Thanks" then print("thanks:",m[2].name,m[2].amount) end end
+donation.OnServerEvent:Fire(localPlayer,"Buy","VIP");clockValue=clockValue+1
+donation.OnServerEvent:Fire(localPlayer,"Buy","Admin");clockValue=clockValue+1
+donation.OnServerEvent:Fire(localPlayer,"Buy","Ticket7");clockValue=clockValue+1
+donation.OnServerEvent:Fire(localPlayer,"Buy","VIP");clockValue=clockValue+1
+for _,m in ipairs(dmsgs) do if m[1]=="State" then print("state msg:",m[2].message,"tickets:",m[2].tokens.Ticket) elseif m[1]=="Thanks" then print("thanks:",m[2].name,m[2].amount) end end
 local Perks=require(__inst.Perks)
-print("perk admin:",Perks.has(localPlayer,"AdminPass"),"tokens:",Perks.tokens(localPlayer,"AdminToken"),"attr:",localPlayer:GetAttribute("Token_AdminToken"))
-assert(Perks.consume(localPlayer,"AdminToken"));print("after consume:",Perks.tokens(localPlayer,"AdminToken"))
+print("perks:",Perks.has(localPlayer,"VIP"),Perks.has(localPlayer,"Admin"),"tickets:",Perks.tokens(localPlayer,"Ticket"),"attr:",localPlayer:GetAttribute("Token_Ticket"))
+assert(Perks.consume(localPlayer,"Ticket"));print("after consume:",Perks.tokens(localPlayer,"Ticket"))
 -- ProcessReceipt without datastore (studio path)
 local Catalog=require(__inst.DonationCatalog)
 local r=mps.ProcessReceipt

@@ -46,6 +46,8 @@ end
 
 sync=function()
     local mode=player:GetAttribute("ScenePhase")=="Round" and "Round" or "Lobby"
+    -- the title screen plays its own track; lobby music waits until it is gone
+    if player:GetAttribute("IntroActive")==true then mode="Title" end
     activeMode=mode
     for key,record in pairs(tracks) do
         if key==mode then
@@ -113,6 +115,7 @@ for mode,definition in pairs(definitions) do
 end
 
 player:GetAttributeChangedSignal("ScenePhase"):Connect(sync)
+player:GetAttributeChangedSignal("IntroActive"):Connect(sync)
 sync()
 for _,record in pairs(tracks) do task.spawn(loadTrack,record) end
 

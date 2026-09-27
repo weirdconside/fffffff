@@ -14,6 +14,7 @@ local Queue=require(script.Parent.LobbyQueue)
 local WishRules=require(script.Parent.WishRules)
 local Theme=require(Shared.StudTheme)
 local Perks=require(script.Parent.Perks)
+local Catalog=require(Shared.DonationCatalog)
 local Command=Shared.Command
 local Snapshot=Shared.Snapshot
 local lobby=assert(Workspace:FindFirstChild("LobbyWorld"),"LobbyWorld missing")
@@ -26,12 +27,6 @@ local storage=game:GetService("ServerStorage")
 for _,o in ipairs(storage:GetChildren()) do if o.Name:sub(1,11)=="RoundCache_" then o:Destroy() end end
 local rooms,membership,sessions,hidden,limits,addedPlayers={},{},{},{},{},{}
 local MAX_PLAYERS,COUNTDOWN=6,15
--- The three ships in the harbour are the three rooms.
-local FLEETS={
-    {title="AZURE FLEET",color=Color3.fromRGB(52,142,230)},
-    {title="GOLDEN FLEET",color=Color3.fromRGB(255,196,44)},
-    {title="CRIMSON FLEET",color=Color3.fromRGB(222,58,52)},
-}
 local LOBBY_WATER_Y=0
 local queueSuppressed,lobbyRate={},{}
 local LOBBY_OPS={LobbyConfig=true,LobbyLeave=true}
@@ -71,51 +66,51 @@ local function conceal(player)
     set(h,{WalkSpeed=0,JumpPower=0,JumpHeight=0,AutoRotate=false,DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None})
     set(r,{Anchored=true});return true
 end
-local function makeSign(room)
+local function label(room,n,text)
     local holder=room.model:FindFirstChild("BillboardHolder",true)
-    if not holder then return nil end
-    local old=holder:FindFirstChild("ShipSign");if old then old:Destroy() end
-    local fleet=FLEETS[room.id] or FLEETS[1]
-    local gui=Instance.new("BillboardGui");gui.Name="ShipSign";gui.Size=UDim2.fromOffset(250,104);gui.AlwaysOnTop=true
-    gui.MaxDistance=260;gui.LightInfluence=0;gui.StudsOffsetWorldSpace=Vector3.new(0,1.5,0);gui.Adornee=holder
-    local plate=Instance.new("Frame");plate.Name="Plate";plate.AnchorPoint=Vector2.new(.5,0);plate.Position=UDim2.new(.5,0,0,24);plate.Size=UDim2.new(1,-10,0,76);plate.Parent=gui
-    Theme.skin(plate,Color3.fromRGB(58,50,40))
-    local ribbon=Instance.new("Frame");ribbon.Name="Ribbon";ribbon.AnchorPoint=Vector2.new(.5,0);ribbon.Position=UDim2.new(.5,0,0,0);ribbon.Size=UDim2.fromOffset(210,34);ribbon.ZIndex=5;ribbon.Parent=gui
-    Theme.skin(ribbon,fleet.color)
-    local title=Instance.new("TextLabel");title.Name="Fleet";title.BackgroundTransparency=1;title.Size=UDim2.fromScale(1,1);title.Text=fleet.title;title.ZIndex=8;title.Parent=ribbon
-    Theme.text(title,19,Color3.fromRGB(255,255,242));title.TextStrokeTransparency=.2;title.TextStrokeColor3=Color3.fromRGB(20,20,30)
-    local amount=Instance.new("TextLabel");amount.Name="Players";amount.BackgroundTransparency=1;amount.Position=UDim2.fromOffset(0,16);amount.Size=UDim2.new(1,0,0,28);amount.ZIndex=6;amount.Parent=plate
-    Theme.text(amount,22,Theme.Colors.Gold)
-    local status=Instance.new("TextLabel");status.Name="Timer";status.BackgroundTransparency=1;status.Position=UDim2.fromOffset(0,44);status.Size=UDim2.new(1,0,0,24);status.ZIndex=6;status.Parent=plate
-    Theme.text(status,15,Theme.Colors.White)
-    gui.Parent=holder
-    return gui
-end
--- status: "idle" | "choosing" | number (countdown seconds) | "launch" | "sea"
-local function label(room,n,status)
-    local gui=room.sign
-    if not gui or not gui.Parent then gui=makeSign(room);room.sign=gui end
+    local gui=holder and holder:FindFirstChildWhichIsA("BillboardGui",true)
+    if not gui then gui=room.model:FindFirstChildWhichIsA("BillboardGui",true) end
     if not gui then return end
     gui.Enabled=true
-    local cap=room.capacity
+    gui.AlwaysOnTop=true
     local amount=gui:FindFirstChild("Players",true);local timer=gui:FindFirstChild("Timer",true)
-    if amount then amount.Text=cap and ("CREW "..tostring(n).."/"..tostring(cap)) or (n>0 and "CREW "..tostring(n) or "NO CREW") end
+    if not amount then amount=gui:FindFirstChild("Count",true) end
+    if not timer then timer=gui:FindFirstChild("Status",true) end
+    local cap=room.capacity or MAX_PLAYERS
+    if amount then amount.Text=tostring(n).."/"..tostring(cap) end
     if timer then
-        local text
-        if type(status)=="number" then text="SAILS IN "..tostring(math.max(0,math.ceil(status))).."s"
-        elseif status=="choosing" then text="CAPTAIN IS CHOOSING..."
-        elseif status=="launch" then text="SETTING SAIL..."
-        elseif status=="sea" then text="AT SEA - BACK SOON"
-        else text="WALK ON BOARD TO SAIL" end
-        timer.Text=text
+        local shown=tostring(text or "")
+        timer.Visible=shown~=""
+        timer.Text=type(text)=="number" and (tostring(text).."s") or shown
     end
-    room.model:SetAttribute("ShipStatus",type(status)=="number" and "countdown" or tostring(status or "idle"))
 end
 local function styleRoom(room)
+    -- Keep the donor cabin geometry while normalizing every status square so
+    -- one stale red material cannot make a waiting cabin look broken.
     for _,o in ipairs(room.model:GetDescendants()) do
-        if o:IsA("BasePart") and (o.Name=="EnterPart" or o.Name=="BeamPart") then o.CanCollide=false end
+        if o:IsA("BasePart") and o.Name=="EnterPart" then o.CanCollide=false end
+        if o:IsA("BasePart") and (o.Name=="BeamPart" or o.Name=="Base" or o.Name=="Floor") then
+            o.Material=Enum.Material.SmoothPlastic
+            o.Color=Color3.fromRGB(72,106,142)
+        elseif o:IsA("Beam") then
+            -- Every cabin uses the same calm blue/cyan signal; no red fallback.
+            o.Color=ColorSequence.new(Color3.fromRGB(100,194,246))
+            o.Brightness=1.2;o.Enabled=true
+        end
     end
-    room.sign=makeSign(room)
+    local gui=room.model:FindFirstChildWhichIsA("BillboardGui",true)
+    if gui then
+        gui.Enabled=true
+        for _,o in ipairs(gui:GetDescendants()) do
+            if o:IsA("TextLabel") then
+                -- All three cabins share one gold counter style.  This removes
+                -- the lone red donor label without changing the cabin mesh.
+                o.TextColor3=Color3.fromRGB(248,222,133)
+                o.TextStrokeColor3=Color3.fromRGB(8,18,32)
+                if o.Text=="HARDCORE" then o.Visible=false end
+            end
+        end
+    end
 end
 local function playerCount(t) local n=0;for _ in pairs(t) do n=n+1 end;return n end
 local function sortedPlayers(t)
@@ -125,8 +120,7 @@ end
 local function lobbySnapshot(room,player)
     local queued=room.queued or {};local count=playerCount(queued)
     local remaining=room.remaining and math.max(0,math.ceil(room.remaining)) or COUNTDOWN
-    local fleet=FLEETS[room.id] or FLEETS[1]
-    return {lobby={room=room.id,fleet=fleet.title,host=room.host and tostring(room.host.UserId) or nil,capacity=room.capacity,count=count,remaining=remaining,choosing=room.host~=nil and room.capacity==nil},message=room.host and (room.capacity and ("ROOM "..tostring(room.capacity)) or "CHOOSE") or "JOIN"}
+    return {lobby={room=room.id,host=room.host and tostring(room.host.UserId) or nil,capacity=room.capacity,count=count,remaining=remaining,choosing=room.host~=nil and room.capacity==nil},message=room.host and (room.capacity and ("ROOM "..tostring(room.capacity)) or "CHOOSE") or "JOIN"}
 end
 local function sendLobby(room)
     for p in pairs(room.queued or {}) do if p.Parent==Players then Snapshot:FireClient(p,lobbySnapshot(room,p)) end end
@@ -142,7 +136,7 @@ local function free(session)
     if sessions[session.room.id]~=session then return end
     sessions[session.room.id]=nil;session.room.busy=false;session.room.deadline=nil;session.room.remaining=nil;session.room.queued={} ;session.room.order={};session.room.host=nil;session.room.capacity=nil
     if session.world then World.destroy(session.world) end
-    label(session.room,0,"idle");sendLobby(session.room)
+    label(session.room,0,COUNTDOWN);sendLobby(session.room)
 end
 local function leave(player,teleport)
     local session=membership[player];membership[player]=nil
@@ -153,7 +147,7 @@ local function leave(player,teleport)
     if session then
         session.players[player]=nil
         if session.state then State.remove(session.state,tostring(player.UserId)) end
-        if not next(session.players) then free(session) else label(session.room,playerCount(session.players),"sea") end
+        if not next(session.players) then free(session) else label(session.room,playerCount(session.players),"ROUND") end
     end
     if teleport then move(player,lobbySpawn.CFrame+Vector3.new(0,4,0)) end
 end
@@ -188,19 +182,23 @@ local function launch(room,group)
             fullGroup[#fullGroup+1]=bot;session.botIds[#session.botIds+1]=tostring(bot.UserId)
         end
     end
-    label(room,#humans,"launch");sendLobby(room)
+    label(room,#humans,"...");sendLobby(room)
     local ok,err=pcall(function()
         session.world=World.create(Data,room.id,token,fullGroup,runtime)
-        local names,bots,colors,perks={},{},{},{}
+        local names,bots,colors,perks,tickets={},{},{},{},{}
         for _,rosterPlayer in ipairs(fullGroup) do
             local uid=tostring(rosterPlayer.UserId)
             names[uid]=rosterPlayer.Name or ("Player "..uid)
             bots[uid]=type(rosterPlayer)=="table" and rosterPlayer.IsBot==true
             local color=session.world.players[uid].colour
             colors[uid]={r=math.floor(color.R*255+.5),g=math.floor(color.G*255+.5),b=math.floor(color.B*255+.5)}
-            if typeof(rosterPlayer)=="Instance" then perks[uid]=Perks.snapshot(rosterPlayer) end
+            if typeof(rosterPlayer)=="Instance" then
+                -- VIP / ADMIN passes: round rules + free tickets for this round
+                local owned=Perks.snapshot(rosterPlayer);perks[uid]=owned
+                tickets[uid]=(owned.VIP and Catalog.Rules.VipRoundTickets or 0)+(owned.Admin and Catalog.Rules.AdminRoundTickets or 0)
+            end
         end
-        session.state=State.new(Data,session.world.layouts,session.world.central,session.world.territories,{names=names,bots=bots,colors=colors,perks=perks})
+        session.state=State.new(Data,session.world.layouts,session.world.central,session.world.territories,{names=names,bots=bots,colors=colors,perks=perks,tickets=tickets})
         session.bots=Bots.attach(session.state,fullGroup,State)
         World.sync(session.world,session.state)
         for _,p in ipairs(humans) do
@@ -214,7 +212,7 @@ local function launch(room,group)
                 p:SetAttribute("RoundHome",v.home);p:SetAttribute("RoundCenter",session.world.center);p:SetAttribute("RoundBoundsMin",session.world.cameraMin);p:SetAttribute("RoundBoundsMax",session.world.cameraMax);p:SetAttribute("RoundModel",session.world.model.Name);p:SetAttribute("RoundToken",token);p:SetAttribute("ScenePhase","Round");send(session,p,nil)
             else leave(p,true) end
         end
-        if sessions[room.id]==session then label(room,#humans,"sea") end
+        if sessions[room.id]==session then label(room,#humans,"ROUND") end
     end)
     if not ok then warn("[ArmyRound] Start failed: "..tostring(err));finish(session)
     else print("[ArmyRound] Started "..token.." players="..#humans.." bots="..#session.botIds) end
@@ -223,14 +221,13 @@ for index=1,3 do
     local m=assert(pads:FindFirstChild("Teleporter"..index),"Missing native Teleporter")
     local f=assert(m:FindFirstChild("BeamPart"),"Missing native BeamPart")
     for _,o in ipairs(m:GetChildren()) do if o:IsA("BasePart") and o.Name=="EnterPart" then o.CanCollide=false end end
-    local room={id=index,model=m,floor=f,busy=false,queued={},order={},joinSerial=0,host=nil,capacity=nil,remaining=nil,lastQueueAt=os.clock()};rooms[#rooms+1]=room;styleRoom(room);label(room,0,"idle")
+    local room={id=index,model=m,floor=f,busy=false,queued={},order={},joinSerial=0,host=nil,capacity=nil,remaining=nil,lastQueueAt=os.clock()};rooms[#rooms+1]=room;styleRoom(room);label(room,0,COUNTDOWN)
 end
 local function inPad(room,r)
     local p=room.floor.CFrame:PointToObjectSpace(r.Position)
     return math.abs(p.X)<=room.floor.Size.X/2 and math.abs(p.Z)<=room.floor.Size.Z/2 and p.Y>=-1 and p.Y<=12
 end
-local allowed={Collect=true,Expand=true,Train=true,Upgrade=true,Craft=true,Research=true,Order=true,BuyWorker=true,Sync=true,WishDraft=true,WishSubmit=true,AppendDraft=true,AppendSubmit=true,Veto=true,UseToken=true}
-local TOKEN_NAMES={AdminToken="Admin Tokens",SupplyDrop="Supply Drops"}
+local allowed={Collect=true,Expand=true,Train=true,Upgrade=true,Craft=true,Research=true,Order=true,BuyWorker=true,Sync=true,WishDraft=true,WishSubmit=true,AppendDraft=true,AppendSubmit=true,UseTicket=true}
 local wishOps={WishDraft=true,WishSubmit=true,AppendDraft=true,AppendSubmit=true}
 local function filterPublic(player,text)
     text=WishRules.sanitize(text)
@@ -301,14 +298,15 @@ Command.OnServerEvent:Connect(function(player,token,op,payload)
         for key in pairs(payload.ids) do if type(key)~="number" or key%1~=0 or key<1 or key>length then return end end
         for i,id in ipairs(payload.ids) do if type(id)~="string" or #id>12 or seen[id] then return end;clean.ids[i]=id;seen[id]=true end
     end
-    if op=="UseToken" then
-        -- The token is spent only after the round confirms the effect can happen.
-        local uid=tostring(player.UserId);local kind=clean.kind
-        if not TOKEN_NAMES[kind] then return end
-        local ok,message=State.canUseToken(session.state,uid,kind)
+    if op=="UseTicket" then
+        -- Free round tickets first, then saved (bought) tickets. A ticket is
+        -- spent only after the round confirms the admin panel can open.
+        local uid=tostring(player.UserId)
+        local ok,message=State.canUseTicket(session.state,uid)
         if ok then
-            if Perks.consume(player,kind) then ok,message=State.useToken(session.state,uid,kind)
-            else message="You have no "..TOKEN_NAMES[kind]..". Get more in the Admin Vault." end
+            if State.spendRoundTicket(session.state,uid) or Perks.consume(player,"Ticket") then
+                ok,message=State.useTicket(session.state,uid)
+            else ok=false;message="You have no tickets. Get more in the shop!" end
         end
         session.sequence=session.sequence+1;send(session,player,message);return
     end
@@ -404,6 +402,7 @@ RunService.Heartbeat:Connect(function(dt)
         local qdt=queueClock;queueClock=0
         local list=Players:GetPlayers();table.sort(list,function(a,b) return a.UserId<b.UserId end)
         local now=os.clock()
+        -- anybody who falls off the island into the water is brought back to the spawn
         for _,player in ipairs(list) do
             local r=not membership[player] and root(player)
             if r and r.Position.Y<LOBBY_WATER_Y-1.5 and math.abs(r.Position.X)<1500 and math.abs(r.Position.Z)<1500 then
@@ -416,7 +415,7 @@ RunService.Heartbeat:Connect(function(dt)
                 for _,player in ipairs(list) do
                     local r=root(player);local inside=r and inPad(room,r)
                     local suppressed=queueSuppressed[player]
-                    -- LEAVE blocks re-boarding for two seconds only; walking back on board afterwards re-queues.
+                    -- LEAVE blocks re-entry for two seconds only; walking back in afterwards re-queues.
                     if suppressed and suppressed.room==room.id and now>=suppressed.untilTime then queueSuppressed[player]=nil;suppressed=nil end
                     if not membership[player] and inside and not (suppressed and suppressed.room==room.id) then candidates[#candidates+1]=player end
                 end
@@ -430,18 +429,18 @@ RunService.Heartbeat:Connect(function(dt)
                 end
                 local group=Queue.advance(room,qdt,COUNTDOWN)
                 local n=playerCount(room.queued)
-                label(room,n,not room.host and "idle" or not room.capacity and "choosing" or (room.remaining or COUNTDOWN))
+                label(room,n,not room.host and "" or not room.capacity and "CHOOSE" or math.ceil(room.remaining or COUNTDOWN))
                 sendLobby(room)
                 if group and #group>0 then
                     room.queued={};room.order={}
-                    -- A crash while launching must never leave a ship stuck "at sea".
+                    -- A crash while launching must never leave a room stuck.
                     local launched,crash=pcall(launch,room,group)
                     if not launched then
                         warn("[ArmyRound] Launch crashed safely: "..tostring(crash))
                         local session=sessions[room.id]
                         if session then pcall(finish,session) else room.busy=false;room.host=nil;room.capacity=nil;room.remaining=nil end
                         for _,p in ipairs(group) do if p.Parent==Players and not membership[p] then p:SetAttribute("ScenePhase","Lobby") end end
-                        label(room,0,"idle")
+                        label(room,0,COUNTDOWN)
                     end
                 end
             else
@@ -456,5 +455,5 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 end)
-print("[ArmyRound] Ready: harbour lobby, three fleets, admin rounds.")
+print("[ArmyRound] Ready: fresh English conquest rounds, neutral islands, eight resource counters.")
 

@@ -171,7 +171,7 @@ for i,side in ipairs({-1,1}) do
     make("UICorner",dot,"Round",{CornerRadius=UDim.new(1,0)});make("UIStroke",dot,"Line",{Color=INK,Thickness=2})
 end
 local credits=make("TextLabel",gui,"Credits",{BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,1),Position=UDim2.new(.5,0,1,-14),Size=UDim2.fromOffset(600,34),
-    Text="HARBOUR UPDATE  -  v2.0\nBUILD  -  BATTLE  -  TYPE THE COMMAND",FontFace=SMALL_FONT,TextSize=13,TextColor3=INK,TextTransparency=1,ZIndex=12})
+    Text="ADMIN UPDATE  -  v2.1\nBUILD  -  BATTLE  -  TYPE THE COMMAND",FontFace=SMALL_FONT,TextSize=13,TextColor3=INK,TextTransparency=1,ZIndex=12})
 
 -- flash + confetti layers
 local flash=make("Frame",gui,"Flash",{Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=1,BorderSizePixel=0,ZIndex=40})
@@ -253,26 +253,94 @@ local function shineLetters()
         tween(l.shine,.55,{Offset=Vector2.new(1.2,0)},Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,(i-1)*.05)
     end
 end
--- icon flies in with a spin
+-- ---------------------------------------------------------------- music + beat clock
+-- Title music: the track from the reference video (TitleMusic.mp3). Upload it
+-- in Creator Dashboard -> Audio and paste the id here; with 0 the animation
+-- still runs on the same beat grid, just silently.
+local MUSIC_ID=0
+local BPM,FIRST_BEAT=128.05,.39            -- measured from the track
+local BEAT=60/BPM
+local SoundService=game:GetService("SoundService")
+local music=Instance.new("Sound");music.Name="TitleMusic";music.Looped=true;music.Volume=.7
+if MUSIC_ID>0 then music.SoundId="rbxassetid://"..MUSIC_ID end
+music.Parent=SoundService
+if MUSIC_ID>0 then music:Play() end
+local clockMode,waitStart,silentStart,loops,lastPos,lastTime="wait",os.clock(),0,0,0,0
+local function songTime()
+    if clockMode=="wait" then
+        if MUSIC_ID>0 and music.IsPlaying and music.TimePosition>0 then clockMode="music"
+        elseif MUSIC_ID<=0 or os.clock()-waitStart>2.5 then clockMode="silent";silentStart=os.clock() end
+        if clockMode=="wait" then return -1 end
+    end
+    if clockMode=="music" then
+        if not music.IsPlaying then clockMode="silent";silentStart=os.clock()-lastTime;return lastTime end
+        local pos=music.TimePosition
+        if pos+1<lastPos then loops+=1 end
+        lastPos=pos;lastTime=pos+loops*math.max(music.TimeLength,1)
+        return lastTime
+    end
+    lastTime=os.clock()-silentStart;return lastTime
+end
+-- ---------------------------------------------------------------- beat choreography
 iconSlot.Position=UDim2.fromOffset(560,-260);iconSlot.Rotation=160
-local iconScale=make("UIScale",iconSlot,"Pop",{Scale=.25})
-barsIn(.05)
-tween(iconSlot,.9,{Position=UDim2.fromOffset(110,132),Rotation=0},Enum.EasingStyle.Back,Enum.EasingDirection.Out,.45)
-tween(iconScale,.9,{Scale=1},Enum.EasingStyle.Back,Enum.EasingDirection.Out,.45)
-task.delay(.5,function() spinIcon(1.1) end)
-task.delay(1.15,function()
-    over.Position=UDim2.fromOffset(6,10)
-    tween(over,.5,{TextTransparency=0,Position=UDim2.fromOffset(6,34)},Enum.EasingStyle.Back)
-    tween(overStroke,.5,{Transparency=0})
-end)
-popLetters(1.25)
-task.delay(1.25+#letters*.075+.3,shineLetters)
-task.delay(2.2,function()
-    tween(track,.35,{BackgroundTransparency=0});tween(trackStroke,.35,{Transparency=0})
-    tween(fill,.35,{BackgroundTransparency=0});tween(fillStuds,.35,{ImageTransparency=.7})
-    tween(status,.35,{TextTransparency=0});tween(credits,.6,{TextTransparency=.25})
-end)
-
+local iconScale=make("UIScale",iconSlot,"Pop",{Scale=0})
+local halfBeat,introDone=-1,false
+local function popLetter(i)
+    local l=letters[i];if not l then return end
+    l.scale.Scale=0;l.holder.Rotation=-25
+    tween(l.scale,.4,{Scale=1},Enum.EasingStyle.Back,Enum.EasingDirection.Out)
+    tween(l.holder,.4,{Rotation=0},Enum.EasingStyle.Back,Enum.EasingDirection.Out)
+    local abs=l.holder.AbsolutePosition+Vector2.new(l.holder.AbsoluteSize.X/2,-l.holder.AbsoluteSize.Y*.5)
+    burst(abs,l.colour,7)
+end
+local function bump(strength)
+    for i,l in ipairs(letters) do
+        if l.scale.Scale>.95 then
+            l.scale.Scale=1+strength*(i%2==0 and 1 or .7)
+            tween(l.scale,BEAT*.9,{Scale=1},Enum.EasingStyle.Quad,Enum.EasingDirection.Out)
+        end
+    end
+    iconScale.Scale=1+strength*.8;tween(iconScale,BEAT*.9,{Scale=1},Enum.EasingStyle.Quad)
+end
+local repopAt=nil
+local function onHalfBeat(h)
+    local beat=h/2
+    if h==0 then barsIn(0)
+    elseif h==2 then
+        tween(iconSlot,.7,{Position=UDim2.fromOffset(110,132),Rotation=0},Enum.EasingStyle.Back,Enum.EasingDirection.Out)
+        tween(iconScale,.7,{Scale=1},Enum.EasingStyle.Back,Enum.EasingDirection.Out);spinIcon(BEAT*3)
+    elseif h==4 then
+        over.Position=UDim2.fromOffset(6,10)
+        tween(over,.35,{TextTransparency=0,Position=UDim2.fromOffset(6,34)},Enum.EasingStyle.Back);tween(overStroke,.35,{Transparency=0})
+    elseif h>=6 and h<6+#letters then popLetter(h-5)
+    elseif h==6+#letters+1 then shineLetters()
+    elseif h==6+#letters+2 then
+        introDone=true
+        tween(track,.3,{BackgroundTransparency=0});tween(trackStroke,.3,{Transparency=0})
+        tween(fill,.3,{BackgroundTransparency=0});tween(fillStuds,.3,{ImageTransparency=.7})
+        tween(status,.3,{TextTransparency=0});tween(credits,.5,{TextTransparency=.25})
+    end
+    if repopAt and h>=repopAt and h<repopAt+#letters then popLetter(h-repopAt+1) end
+    -- every beat the title pulses; the bar line (strongest beat) hits harder
+    if h%2==0 and h>=6+#letters+2 and stage~="exit" then
+        local b=math.floor(beat)
+        local downbeat=(b-3)%4==0
+        bump(downbeat and .12 or .05)
+        if downbeat and (b-3)%16==0 then spinIcon(BEAT*3);shineLetters() end
+        -- every 8 bars: the reference-style refresh (flash, bricks leave and return, letters re-pop)
+        if downbeat and b>=40 and (b-3)%32==0 and stage=="ready" then
+            flash.BackgroundTransparency=.35;tween(flash,.6,{BackgroundTransparency=1},Enum.EasingStyle.Quad)
+            for _,br in ipairs(bars) do br.frame:SetAttribute("Busy",true) end
+            barsOut(BEAT*.8)
+            task.delay(BEAT,function()
+                barsIn(0,true)
+                task.delay(1.1,function() for _,br in ipairs(bars) do br.frame:SetAttribute("Busy",nil) end end)
+            end)
+            for _,l in ipairs(letters) do l.scale.Scale=0 end
+            repopAt=h+2
+        end
+    end
+end
 -- ---------------------------------------------------------------- loading progress (monotonic)
 local shown,peakQueue=0,1
 local function measure()
@@ -299,17 +367,7 @@ local function becomeReady()
     end)
 end
 local finished=false
-local function cinematicCamera()
-    local camera=Workspace.CurrentCamera;if not camera then return end
-    local character=player.Character or player.CharacterAdded:Wait()
-    local root=character:WaitForChild("HumanoidRootPart",10);if not root then return end
-    camera.CameraType=Enum.CameraType.Scriptable
-    local look=root.CFrame.LookVector
-    local from=CFrame.lookAt(root.Position+Vector3.new(0,55,0)-look*70+root.CFrame.RightVector*40,root.Position+look*60)
-    local to=CFrame.lookAt(root.Position-look*14+Vector3.new(0,7,0),root.Position+look*8+Vector3.new(0,2,0))
-    camera.CFrame=from
-    return camera,from,to
-end
+local frameConnection -- per-frame loop, assigned below and disconnected on exit
 local function exit()
     if finished or not ready then return end;finished=true;stage="exit"
     tween(pillScale,.12,{Scale=1.12},Enum.EasingStyle.Quad);task.delay(.12,function() tween(pillScale,.18,{Scale=.9}) end)
@@ -330,24 +388,15 @@ local function exit()
     end
     task.wait(.5+#wipeRows*.035)
     paper.Visible=false;rig.Visible=false;logo.Visible=false;lower.Visible=false;credits.Visible=false;confettiLayer.Visible=false
-    local camera,from,to=cinematicCamera()
     core(true)
     player:SetAttribute("IntroActive",false)
     for i,row in ipairs(wipeRows) do
         tween(row,.6,{Position=UDim2.fromOffset(-d*1.45,(i-1)*h-3)},Enum.EasingStyle.Quart,Enum.EasingDirection.In,(i-1)*.03)
     end
-    if camera then
-        local t0=os.clock()
-        while os.clock()-t0<1.6 do
-            local k=(os.clock()-t0)/1.6;k=1-(1-k)^3
-            camera.CFrame=from:Lerp(to,k);RunService.RenderStepped:Wait()
-        end
-        camera.CameraType=Enum.CameraType.Custom
-        local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-        if humanoid then camera.CameraSubject=humanoid end
-    else
-        task.wait(.9)
-    end
+    -- straight back to the player: no camera flight
+    local fade=TweenService:Create(music,TweenInfo.new(1),{Volume=0});fade:Play()
+    task.wait(.9)
+    music:Destroy()
     if frameConnection then frameConnection:Disconnect() end
     gui:Destroy()
 end
@@ -361,16 +410,14 @@ UserInputService.InputBegan:Connect(function(input)
 end)
 
 -- ---------------------------------------------------------------- per-frame animation
-local nextShine,nextFlip,nextRefresh=5,6.5,11
 local fitClock=0
-local frameConnection
 frameConnection=RunService.RenderStepped:Connect(function(dt)
     if not gui.Parent then frameConnection:Disconnect();return end
     local t=os.clock()-started
     fitClock+=dt;if fitClock>.5 then fitClock=0;fit() end
     -- bricks drift gently along their diagonal
     for _,b in ipairs(bars) do b.offset=math.sin(t*.6+b.seed)*12 end
-    if stage~="intro" or t>2.2 then
+    if stage~="intro" or introDone then
         for _,b in ipairs(bars) do
             local playing=b.frame:GetAttribute("Busy")
             if not playing then b.frame.Position=barPosition(b) end
@@ -390,30 +437,24 @@ frameConnection=RunService.RenderStepped:Connect(function(dt)
         local target=measure()
         shown=math.max(shown,shown+(target-shown)*math.min(1,dt*3))
         fill.Size=UDim2.fromScale(math.clamp(shown,.04,1),1)
-        status.Text=("LOADING THE HARBOUR...  %d%%"):format(math.floor(shown*100+.5))
-        if t>3.1 and target>=.98 and shown>.95 then fill.Size=UDim2.fromScale(1,1);becomeReady() end
+        status.Text=("LOADING...  %d%%"):format(math.floor(shown*100+.5))
+        if introDone and target>=.98 and shown>.95 then fill.Size=UDim2.fromScale(1,1);becomeReady() end
         if t>25 then becomeReady() end
     elseif stage=="ready" then
         pillScale.Scale=pillScale.Scale+((1+math.sin(t*3.2)*.04)-pillScale.Scale)*math.min(1,dt*10)
     end
-    if stage~="exit" then
-        if t>nextShine then nextShine=t+4.5;shineLetters() end
-        if t>nextFlip then nextFlip=t+7;spinIcon(1.2) end
-        if t>nextRefresh and stage=="ready" then
-            nextRefresh=t+12
-            -- the reference-style refresh: a soft flash, bricks leave and come back
-            flash.BackgroundTransparency=.35;tween(flash,.6,{BackgroundTransparency=1},Enum.EasingStyle.Quad)
-            for _,b in ipairs(bars) do b.frame:SetAttribute("Busy",true) end
-            barsOut(.35)
-            task.delay(.45,function()
-                barsIn(0,true)
-                task.delay(1.1,function() for _,b in ipairs(bars) do b.frame:SetAttribute("Busy",nil) end end)
-            end)
-            popLetters(.25)
-            for _,l in ipairs(letters) do l.scale.Scale=.6 end
-        end
+    local song=songTime()
+    if song>=0 then
+        local h=math.floor((song-FIRST_BEAT)/(BEAT/2))
+        local guard=0
+        while halfBeat<h and guard<8 do halfBeat+=1;guard+=1;onHalfBeat(halfBeat) end
+        if halfBeat<h then halfBeat=h end
     end
 end)
 -- bricks are tweened during the intro; let the idle drift take over afterwards
-for _,b in ipairs(bars) do b.frame:SetAttribute("Busy",true) end
-task.delay(2.3,function() for _,b in ipairs(bars) do b.frame:SetAttribute("Busy",nil) end end)
+for _,b in ipairs(bars) do b.frame:SetAttribute("Busy",true);b.frame.Position=barPosition(b,(b.def.lane<0 and -1 or 1)*D*1.2) end
+task.spawn(function()
+    repeat task.wait() until halfBeat>=0 or not gui.Parent
+    task.wait(1.4)
+    for _,b in ipairs(bars) do b.frame:SetAttribute("Busy",nil) end
+end)

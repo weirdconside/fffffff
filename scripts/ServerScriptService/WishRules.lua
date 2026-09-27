@@ -3,7 +3,10 @@
 -- The command interpreter is local and bounded; there is no external AI service.
 local Typing=require(game:GetService('ReplicatedStorage'):WaitForChild('ArmyRoundShared'):WaitForChild('TypingRules'))
 local Rules={Times={Prompt=15,Announcement=3,Roulette=5,Append=10,Applied=4,Filtering=6,Resolving=6}}
-Rules.OvertimeBonus=10
+-- Admin panel pacing: a visible timer opens the panel for someone at random.
+Rules.FirstDelay=45      -- seconds into the round before the first admin panel
+Rules.Interval=60        -- seconds between admin panels (counted after one finishes)
+Rules.AdminBonus=.20     -- ADMIN pass: +20% weight in the random pick
 local function copy(v) if type(v)~='table' then return v end;local out={};for k,x in pairs(v) do out[k]=copy(x) end;return out end
 local function keys(t) local a={};for k in pairs(t or {}) do a[#a+1]=tostring(k) end;table.sort(a);return a end
 local function perk(p,name) return p~=nil and type(p.perks)=='table' and p.perks[name]==true end
@@ -17,56 +20,66 @@ end
 local function eligible(s,id) local p=s.players[id];return p and p.active and not p.defeated and not p.departed end
 local function phase(s,e,name)
     e.phase=name;e.started=s.elapsed;e.duration=Rules.Times[name] or 0;e.deadline=s.elapsed+e.duration
-    if name=='Prompt' and perk(s.players[e.recipient],'OvertimePen') then
-        e.duration=e.duration+Rules.OvertimeBonus;e.deadline=e.deadline+Rules.OvertimeBonus
-    end
 end
-local function maxAwards(s,w,id) return w.maxAwards+(perk(s.players[id],'AdminPass') and 1 or 0) end
 function Rules.new(players,opts)
-    local ids=keys(players);local counts={};local extra=0
-    for _,id in ipairs(ids) do counts[id]=0;if perk(players[id],'AdminPass') then extra=extra+1 end end
-    return {ids=ids,counts=counts,maxAwards=3,totalStages=#ids*3+extra,completedStages=0,lastAward=-math.huge,cooldown=60,nextId=0,rng=opts and opts.rng or math.random}
+    local ids=keys(players);local counts={}
+    for _,id in ipairs(ids) do counts[id]=0 end
+    return {ids=ids,counts=counts,nextAt=Rules.FirstDelay,firstDone=false,queue={},nextId=0,rng=opts and opts.rng or math.random}
 end
 function Rules.setRng(w,rng) if w and type(rng)=='function' then w.rng=rng end end
-function Rules.progress(s)
-    local best=0;for id,p in pairs(s.players) do if eligible(s,id) then
-        local n=0;for _,b in pairs(p.buildings) do n=n+math.max(0,b.level-1) end;best=math.max(best,n)
-    end end;return best
-end
+-- VIP owners always get the FIRST timer panel; afterwards it is a weighted
+-- random pick where ADMIN owners weigh 20% more.
 local function recipient(s)
-    local w=s.wish;local least=math.huge;local list,priority={},{}
-    for _,id in ipairs(w.ids) do if eligible(s,id) and w.counts[id]<maxAwards(s,w,id) then least=math.min(least,w.counts[id]) end end
-    for _,id in ipairs(w.ids) do if eligible(s,id) and w.counts[id]==least and w.counts[id]<maxAwards(s,w,id) then
-        list[#list+1]=id;if perk(s.players[id],'AdminPass') then priority[#priority+1]=id end
+    local w=s.wish
+    if not w.firstDone then
+        local vips={}
+        for _,id in ipairs(w.ids) do if eligible(s,id) and perk(s.players[id],'VIP') then vips[#vips+1]=id end end
+        if #vips>0 then return vips[math.floor(random(w)*#vips)+1] end
+    end
+    local total,list=0,{}
+    for _,id in ipairs(w.ids) do if eligible(s,id) then
+        local weight=perk(s.players[id],'Admin') and (1+Rules.AdminBonus) or 1
+        total=total+weight;list[#list+1]={id=id,weight=weight}
     end end
-    -- Admin Pass owners are picked first among the players with the fewest turns.
-    if #priority>0 then list=priority end
-    if #list>0 then return list[math.floor(random(w)*#list)+1] end
+    if total<=0 then return nil end
+    local roll=random(w)*total
+    for _,entry in ipairs(list) do roll=roll-entry.weight;if roll<=0 then return entry.id end end
+    return list[#list].id
 end
-local function open(s,id,token)
+Rules.pickForTest=recipient
+local function open(s,id,ticket)
     local w=s.wish
     w.nextId=w.nextId+1
-    local e={id=tostring(w.nextId),recipient=id,prompt='',buffers={},submitted={},pending={},additions={},applied=false,token=token==true}
+    local e={id=tostring(w.nextId),recipient=id,prompt='',buffers={},submitted={},pending={},additions={},applied=false,ticket=ticket==true}
+    w.counts[id]=(w.counts[id] or 0)+1
     w.event=e;phase(s,e,'Prompt');return e
 end
-function Rules.newEvent(s,elapsed)
+function Rules.newEvent(s)
     local w=s.wish
-    if not w or w.event or w.completedStages>=w.totalStages or elapsed-w.lastAward<w.cooldown then return end
+    if not w or w.event then return end
     local id=recipient(s);if not id then return end
-    w.counts[id]=w.counts[id]+1;w.completedStages=w.completedStages+1;w.lastAward=elapsed
+    w.firstDone=true
     return open(s,id,false)
 end
--- Admin Token: an extra, player-triggered turn. It never uses the regular
--- stage budget and never interrupts an event that is already running.
-function Rules.canForce(s,uid)
+-- Tickets: open the panel for the owner right now, or right after the
+-- current one (one waiting ticket per player).
+function Rules.canTicket(s,uid)
     local w=s.wish
-    if not w or s.status~='Active' or not eligible(s,uid) then return false,'You cannot use this right now.' end
-    if w.event then return false,'Wait for the current Admin Panel to finish.' end
+    if not w or s.status~='Active' or not eligible(s,uid) then return false,'You cannot use a ticket right now.' end
+    for _,q in ipairs(w.queue) do if q==uid then return false,'Your ticket is already waiting in line.' end end
+    if w.event and w.event.recipient==uid and w.event.phase=='Prompt' then return false,'The admin panel is already yours!' end
     return true
 end
-function Rules.force(s,uid)
-    if not Rules.canForce(s,uid) then return nil end
-    local e=open(s,uid,true);s.wish.lastAward=s.elapsed;return e
+function Rules.useTicket(s,uid)
+    local ok,message=Rules.canTicket(s,uid);if not ok then return false,message end
+    local w=s.wish
+    if not w.event then open(s,uid,true);return true,'Ticket used: the admin panel is yours!' end
+    w.queue[#w.queue+1]=uid
+    return true,'Ticket used: the admin panel opens for you right after this one (#'..#w.queue..' in line).'
+end
+function Rules.queuePosition(s,uid)
+    for i,q in ipairs(s.wish and s.wish.queue or {}) do if q==uid then return i end end
+    return nil
 end
 -- ------------------------------------------------------------------ interpreter
 local function has(t,list) for _,word in ipairs(list) do if t:find(word,1,true) then return true end end;return false end
@@ -207,19 +220,6 @@ function Rules.canWish(s,uid,op,id)
     if e.phase=='Append' then return op=='AppendDraft' or op=='AppendSubmit' end
     return false
 end
--- Veto Power: once per round, cancel someone else's command after it is public.
-local VETO_PHASES={Announcement=true,Roulette=true,Append=true,Resolving=true}
-function Rules.canVeto(s,uid)
-    local e=s.wish and s.wish.event;local p=s.players[uid]
-    return s.status=='Active' and e~=nil and eligible(s,uid) and perk(p,'VetoPower') and not p.vetoUsed
-        and e.recipient~=uid and VETO_PHASES[e.phase]==true
-end
-function Rules.veto(s,uid)
-    if not Rules.canVeto(s,uid) then return false,'Veto is not available right now.' end
-    local e=s.wish.event;local p=s.players[uid];p.vetoUsed=true
-    e.vetoBy=p.name;finish(s,e,'VETOED by '..tostring(p.name)..'. No effects were applied.','Vetoed')
-    return true,'Veto used.'
-end
 function Rules.approve(s,uid,eventId,sourcePhase,filtered)
     local e=s.wish and s.wish.event
     if not e or e.id~=eventId or not e.pending[uid] or e.pending[uid].phase~=sourcePhase or s.status~='Active' then return false end
@@ -247,7 +247,6 @@ local function submit(s,e,uid,sourcePhase)
 end
 function Rules.action(s,uid,op,payload)
     payload=type(payload)=='table' and payload or {}
-    if op=='Veto' then return Rules.veto(s,uid) end
     if not Rules.canWish(s,uid,op,payload.eventId) then return false,'This input window is closed.' end
     local e=s.wish.event
     if op=='WishDraft' or op=='AppendDraft' then
@@ -270,7 +269,14 @@ function Rules.tick(s,elapsed)
     if s.status~='Active' then w.event=nil;return end
     local e=w.event
     if e then
-        if e.phase=='Applied' then if elapsed>=e.deadline then w.event=nil end;return end
+        if e.phase=='Applied' then
+            if elapsed>=e.deadline then
+                w.event=nil
+                -- the timer restarts after a timer panel; tickets never delay it
+                if not e.ticket then w.nextAt=elapsed+Rules.Interval else w.nextAt=math.max(w.nextAt,elapsed+3) end
+            end
+            return
+        end
         if not eligible(s,e.recipient) then finish(s,e,'The author left the round.');return end
         for uid in pairs(e.pending) do
             if not eligible(s,uid) then e.pending[uid]=nil;e.additions[uid]=nil end
@@ -280,9 +286,7 @@ function Rules.tick(s,elapsed)
         if e.phase=='Prompt' then submit(s,e,e.recipient,'Prompt')
         elseif e.phase=='Filtering' then finish(s,e,'Text filtering timed out. No effect was applied.')
         elseif e.phase=='Announcement' then
-            -- Rigged Roulette tilts the odds only for its owner's own command.
-            local odds=perk(s.players[e.recipient],'RiggedRoulette') and .75 or .5
-            e.choice=random(w)<odds and 'Execute' or 'Append';phase(s,e,'Roulette')
+            e.choice=random(w)<.5 and 'Execute' or 'Append';phase(s,e,'Roulette')
         elseif e.phase=='Roulette' then
             if e.choice=='Execute' then finish(s,e) else
                 e.submitted={};e.buffers={};e.pending={};phase(s,e,'Append')
@@ -294,12 +298,19 @@ function Rules.tick(s,elapsed)
             -- Fail closed for unfiltered clauses. The base prompt remains filtered.
             if anyPending(e) then finish(s,e,'An appended prompt could not be filtered. No effect was applied.') else finish(s,e) end
         end
-    elseif w.completedStages<w.totalStages and Rules.progress(s)>=(w.completedStages+1)*2 then Rules.newEvent(s,elapsed) end
+        return
+    end
+    -- waiting tickets go first, then the timer
+    while #w.queue>0 do
+        local uid=table.remove(w.queue,1)
+        if eligible(s,uid) then open(s,uid,true);return end
+    end
+    if elapsed>=w.nextAt then Rules.newEvent(s) end
 end
 function Rules.snapshot(s,uid)
     local w=s.wish;if not w then return nil end
     local e=w.event
-    if not e then return {phase='Idle'} end
+    if not e then return {phase='Idle',nextIn=math.max(0,math.ceil(w.nextAt-s.elapsed)),queue=#w.queue} end
     local author=s.players[e.recipient];local quotes={}
     if e.prompt~='' then quotes[#quotes+1]={uid=e.recipient,name=author and author.name or 'Player',color=author and copy(author.color),text=e.prompt} end
     if e.phase=='Applied' then for _,id in ipairs(w.ids) do local text=e.additions[id]
@@ -310,7 +321,7 @@ function Rules.snapshot(s,uid)
         phaseElapsed=math.max(0,s.elapsed-e.started),duration=e.duration,recipient=e.recipient,recipientName=author and author.name,
         recipientColor=author and copy(author.color),prompt=e.prompt,finalPrompt=e.finalPrompt,quotes=quotes,choice=e.choice,
         canType=canType,submitted=e.submitted[uid]==true,ownDraft=canType and (e.buffers[uid] or '') or nil,
-        outcome=e.outcome,effect=e.effect,applied=e.applied,token=e.token,vetoBy=e.vetoBy,canVeto=Rules.canVeto(s,uid),
+        outcome=e.outcome,effect=e.effect,applied=e.applied,ticket=e.ticket,
         examples=e.phase=='Prompt' and uid==e.recipient and Rules.Examples or nil}
 end
 Rules.copy=copy

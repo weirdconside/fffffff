@@ -31,10 +31,6 @@ function Admin.new(parent,send)
     self.error=label(card,'Error','',13,UDim2.fromOffset(20,130),UDim2.new(1,-40,0,22),Theme.Colors.Gold);self.error.Visible=false
     -- Example commands under the input so new players know what the panel understands.
     self.hint=label(card,'Hint','',12,UDim2.fromOffset(20,150),UDim2.new(1,-40,0,20),Theme.Colors.Muted);self.hint.Visible=false;self.hint.TextXAlignment=Enum.TextXAlignment.Left
-    -- Veto Power (Admin Vault pass): cancel someone else's public command once per round.
-    local veto=make('TextButton',card,'Veto');veto.Text='VETO';veto.AnchorPoint=Vector2.new(1,0);veto.Position=UDim2.new(1,-84,0,14);veto.Size=UDim2.fromOffset(92,32);veto.ZIndex=9;veto.Visible=false
-    Theme.button(veto,Theme.Colors.Red,16);self.veto=veto
-    veto.Activated:Connect(function() if self.canVeto then self.canVeto=false;veto.Visible=false;send('Veto',{}) end end)
     local viewport=make('Frame',card,'RouletteViewport');viewport.BackgroundTransparency=1;viewport.Position=UDim2.fromOffset(20,76);viewport.Size=UDim2.new(1,-40,0,84);viewport.ClipsDescendants=true;viewport.ZIndex=5;self.viewport=viewport
     local strip=make('Frame',viewport,'MovingStrip');strip.BackgroundTransparency=1;strip.Size=UDim2.fromOffset(30*216,84);strip.ZIndex=6;self.strip=strip
     for i=1,30 do
@@ -76,11 +72,10 @@ function Admin:update(wish)
     self.gui.Enabled=self.field.Visible or self.viewport.Visible or self.quote.Visible
     self.card.Size=UDim2.fromOffset(600,self.phase=='Applied' and 262 or self.phase=='Announcement' and 208 or self.phase=='Roulette' and 190 or watching and 120 or 162)
     self.card.Position=watching and UDim2.new(.5,0,0,170) or UDim2.fromScale(.5,.5)
-    self.canVeto=wish.canVeto==true;self.veto.Visible=self.canVeto
     self.hint.Visible=self.field.Visible and self.phase=='Prompt'
     if self.hint.Visible then self.hint.Text='TRY: heal my army  /  meteor on enemies  /  summon 3 giants  /  give me gold' end
     self.card.Size=self.hint.Visible and UDim2.fromOffset(600,178) or self.card.Size
-    self.title.Text=wish.token and 'ADMIN TOKEN' or 'ADMIN PANEL';self.title.TextColor3=Theme.Colors.Gold
+    self.title.Text=wish.ticket and 'ADMIN TICKET' or 'ADMIN PANEL';self.title.TextColor3=Theme.Colors.Gold
     if watching then
         self.title.Text=string.upper(wish.recipientName or 'A PLAYER')..' HAS THE ADMIN PANEL';self.title.TextColor3=colour(wish.recipientColor)
         self.quote.Text=self.phase=='Filtering' and 'Checking the command...' or 'Typing a command...'
@@ -88,7 +83,7 @@ function Admin:update(wish)
         self.title.Text=wish.recipientName or 'Player';self.title.TextColor3=colour(wish.recipientColor);self.quote.Text=wish.prompt or ''
     elseif self.phase=='Roulette' then self.title.Text='ROULETTE'
     elseif self.phase=='Applied' then
-        self.title.Text=wish.outcome=='Executed' and 'COMMAND EXECUTED' or wish.outcome=='Vetoed' and 'COMMAND VETOED' or wish.outcome=='Cancelled' and 'COMMAND CANCELLED' or 'COMMAND REJECTED'
+        self.title.Text=wish.outcome=='Executed' and 'COMMAND EXECUTED' or wish.outcome=='Cancelled' and 'COMMAND CANCELLED' or 'COMMAND REJECTED'
         self.title.TextColor3=wish.outcome=='Executed' and Theme.Colors.Green or Theme.Colors.Red
         self.quote.Text=(wish.finalPrompt or wish.prompt or '')..'\n\n'..(wish.effect or '')
     end

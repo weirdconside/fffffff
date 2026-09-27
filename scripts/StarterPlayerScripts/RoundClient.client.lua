@@ -20,10 +20,10 @@ local hud=playerGui:WaitForChild("ArmyRoundHUD",20)
 if not hud then warn("[ArmyRound] Native HUD did not replicate");return end
 
 local currencies=Theme.buildHUD(hud,Data,Icons)
--- Brick wipe between the harbour and a round (the title screen covers the first join).
+-- Brick wipe between the lobby and a round (the title screen covers the first join).
 local Transition=require(shared:WaitForChild("StudTransition"))
 local transition=Transition.new(playerGui)
-local FLEET_NAMES={"AZURE FLEET","GOLDEN FLEET","CRIMSON FLEET"}
+local ROOM_NAMES={"ROOM 1","ROOM 2","ROOM 3"}
 local launchCover=false
 local function sailTransition(title,subtitle,hold)
     task.spawn(function()
@@ -73,17 +73,19 @@ panelInfo.Size=UDim2.new(1,-28,0,42);panelInfo.TextYAlignment=Enum.TextYAlignmen
 Theme.text(panelInfo,13,Theme.Colors.Muted)
 actionButtons.Position=UDim2.fromOffset(12,86);actionButtons.Size=UDim2.new(1,-24,1,-96)
 actionLayout.CellSize=UDim2.fromOffset(139,43);actionLayout.CellPadding=UDim2.fromOffset(7,7);actionLayout.SortOrder=Enum.SortOrder.LayoutOrder
--- Admin Vault tokens and active admin-command effects (top centre of the round HUD).
+-- Tickets, admin panel timer and active admin-command effects (top centre of the round HUD).
 local boostGui=Instance.new("ScreenGui");boostGui.Name="RoundBoosts";boostGui.ResetOnSpawn=false;boostGui.IgnoreGuiInset=true;boostGui.DisplayOrder=21;boostGui.Enabled=false;boostGui.Parent=playerGui
 local boostRow=Instance.new("Frame");boostRow.Name="Row";boostRow.BackgroundTransparency=1;boostRow.AnchorPoint=Vector2.new(.5,0);boostRow.Position=UDim2.new(.5,0,0,64);boostRow.Size=UDim2.fromOffset(640,44);boostRow.Parent=boostGui
 local boostLayout=Instance.new("UIListLayout");boostLayout.FillDirection=Enum.FillDirection.Horizontal;boostLayout.HorizontalAlignment=Enum.HorizontalAlignment.Center;boostLayout.Padding=UDim.new(0,8);boostLayout.SortOrder=Enum.SortOrder.LayoutOrder;boostLayout.Parent=boostRow
-local tokenButtons={}
-for index,info in ipairs({{kind="AdminToken",label="ADMIN TOKEN",color=Theme.Colors.Gold},{kind="SupplyDrop",label="SUPPLY DROP",color=Theme.Colors.Green}}) do
-    local b=Instance.new("TextButton");b.Name=info.kind;b.LayoutOrder=index;b.Size=UDim2.fromOffset(176,40);b.Text=info.label;b.Visible=false;b.Parent=boostRow
-    Theme.button(b,info.color,15);b.TextColor3=Theme.Colors.Ink
-    b.Activated:Connect(function() if active and token then command:FireServer(token,"UseToken",{kind=info.kind}) end end)
-    tokenButtons[info.kind]={button=b,label=info.label}
-end
+-- Admin panel timer + ticket button (VIP / ADMIN / bought tickets).
+local timerChip=Instance.new("Frame");timerChip.Name="AdminTimer";timerChip.LayoutOrder=1;timerChip.Size=UDim2.fromOffset(220,40);timerChip.Parent=boostRow
+Theme.skin(timerChip,Theme.Colors.Purple)
+local timerText=Instance.new("TextLabel");timerText.Name="Caption";timerText.BackgroundTransparency=1;timerText.Size=UDim2.fromScale(1,1);timerText.ZIndex=5;timerText.Parent=timerChip
+Theme.text(timerText,15,Theme.Colors.White);timerText.Text="ADMIN PANEL IN 0:45"
+local ticketButton=Instance.new("TextButton");ticketButton.Name="Ticket";ticketButton.LayoutOrder=2;ticketButton.Size=UDim2.fromOffset(190,40);ticketButton.Text="USE TICKET";ticketButton.Visible=false;ticketButton.Parent=boostRow
+Theme.button(ticketButton,Theme.Colors.Gold,15);ticketButton.TextColor3=Theme.Colors.Ink
+ticketButton.Activated:Connect(function() if active and token then command:FireServer(token,"UseTicket",{}) end end)
+local timerInfo={nextIn=nil,at=0,phase="Idle",queue=nil}
 local chips={}
 for index,info in ipairs({{key="army",text="ARMY BOOST",color=Theme.Colors.Red},{key="workers",text="WORKER BOOST",color=Theme.Colors.Green},{key="shield",text="SHIELD UP",color=Theme.Colors.Blue},{key="frozen",text="YOU ARE FROZEN",color=Color3.fromRGB(120,200,255)}}) do
     local chip=Instance.new("Frame");chip.Name=info.key;chip.LayoutOrder=10+index;chip.Size=UDim2.fromOffset(150,32);chip.Visible=false;chip.Parent=boostRow
@@ -92,18 +94,30 @@ for index,info in ipairs({{key="army",text="ARMY BOOST",color=Theme.Colors.Red},
     Theme.text(caption,14,Theme.Colors.Ink)
     chips[info.key]=chip
 end
+local function ticketCount(snapshot)
+    return (snapshot and snapshot.roundTickets or 0)+(player:GetAttribute("Token_Ticket") or 0)
+end
 local function refreshBoosts(snapshot)
-    for kind,entry in pairs(tokenButtons) do
-        local count=player:GetAttribute("Token_"..kind) or 0
-        entry.button.Visible=count>0
-        entry.button.Text=entry.label.." x"..tostring(count)
-        local ready=kind~="AdminToken" or (snapshot and snapshot.tokenReady)
-        entry.button.BackgroundColor3=ready and (kind=="AdminToken" and Theme.Colors.Gold or Theme.Colors.Green) or Theme.Colors.Dark
-    end
+    local count=ticketCount(snapshot)
+    ticketButton.Visible=count>0
+    ticketButton.Text="USE TICKET x"..tostring(count).."  [T]"
+    local ready=snapshot and snapshot.ticketReady
+    ticketButton.BackgroundColor3=ready and Theme.Colors.Gold or Theme.Colors.Dark
+    local wish=snapshot and snapshot.wish or {}
+    timerInfo.phase=wish.phase or "Idle";timerInfo.nextIn=wish.nextIn;timerInfo.at=os.clock();timerInfo.queue=snapshot and snapshot.ticketQueue
     local b=snapshot and snapshot.boosts or {}
     chips.army.Visible=b.army==true;chips.workers.Visible=b.workers==true;chips.shield.Visible=b.shield==true
     chips.frozen.Visible=snapshot~=nil and snapshot.frozen==true
 end
+RunService.Heartbeat:Connect(function()
+    if not active then return end
+    if timerInfo.queue then timerText.Text="YOUR TICKET: #"..tostring(timerInfo.queue).." IN LINE"
+    elseif timerInfo.phase~="Idle" then timerText.Text="ADMIN PANEL IS OPEN!"
+    elseif timerInfo.nextIn then
+        local left=math.max(0,math.ceil(timerInfo.nextIn-(os.clock()-timerInfo.at)))
+        timerText.Text=("ADMIN PANEL IN %d:%02d"):format(left//60,left%60)
+    end
+end)
 local actionClose=Instance.new("TextButton");actionClose.Name="Close";actionClose.Text="X";actionClose.Size=UDim2.fromOffset(28,28);actionClose.Position=UDim2.new(1,-40,0,10);actionClose.ZIndex=6;actionClose.Parent=actionPanel;Theme.button(actionClose,Theme.Colors.Red,16)
 local function resizeWindows()
     local camera=Workspace.CurrentCamera;if not camera then return end
@@ -338,14 +352,14 @@ local function phase()
             UIS.MouseBehavior=Enum.MouseBehavior.Default
             hud.Enabled=true;actionGui.Enabled=true;boostGui.Enabled=true;adminUI:reset();lobbyPicker:hide();baseBadges:reset();hideAction();updateResources(nil)
             tell("WASD / arrows / screen edges: camera; wheel: zoom; H: home; capture every base to win.")
-            if enteringRound then launchCover=false;sailTransition("LAND HO!","Build, train and wait for the Admin Panel",.9) end
+            if enteringRound then launchCover=false;sailTransition("BATTLE!","Build, train and wait for the admin panel",.9) end
             command:FireServer(token,"Sync",{})
         else lower=newMin;upper=newMax end
     elseif active then
         if animation then animation:destroy();animation=nil end
         active=false;token=nil;state=nil;currentWorld=nil;hud.Enabled=false;actionGui.Enabled=false;adminUI:reset();lobbyPicker:hide();baseBadges:reset();hideAction()
         boostGui.Enabled=false
-        sailTransition("BACK TO THE HARBOUR","Board a ship to sail again",.7)
+        sailTransition("BACK TO THE LOBBY","Step on a square to play again",.7)
         selectedUnits={};selectedBuilding=nil;rallyNext=false
         showHover(nil);restoreCamera();updateResources(nil)
     else
@@ -402,8 +416,8 @@ UIS.InputBegan:Connect(function(input,processed)
         elseif code==Enum.KeyCode.R then send("Research",{kind=lastKind})
         elseif code==Enum.KeyCode.E then activate(cast())
         elseif code==Enum.KeyCode.T then
-            -- T: use an Admin Token (if any). The server validates everything.
-            if (player:GetAttribute("Token_AdminToken") or 0)>0 then send("UseToken",{kind="AdminToken"}) end
+            -- T: use a ticket (free round ticket first). The server validates everything.
+            send("UseTicket",{})
         end
     end
 end)
@@ -512,15 +526,13 @@ player:GetAttributeChangedSignal("ScenePhase"):Connect(function()
     if player:GetAttribute("ScenePhase")=="Transferring" then
         local room=lobbyPicker.room
         launchCover=true
-        task.spawn(function() transition:cover("SETTING SAIL...",room and FLEET_NAMES[room] or "The fleet is leaving the harbour") end)
+        task.spawn(function() transition:cover("LOADING BATTLE...",room and ROOM_NAMES[room] or "Get ready") end)
     elseif player:GetAttribute("ScenePhase")~="Round" and not active and launchCover then
         launchCover=false
-        -- A launch that failed on the server returns us to the harbour: never leave the wipe up.
+        -- A launch that failed on the server returns us to the lobby: never leave the wipe up.
         task.delay(.4,function() if not active then transition:reveal() end end)
     end
 end)
-for _,kind in ipairs({"AdminToken","SupplyDrop"}) do
-    player:GetAttributeChangedSignal("Token_"..kind):Connect(function() if active then refreshBoosts(state) end end)
-end
+player:GetAttributeChangedSignal("Token_Ticket"):Connect(function() if active then refreshBoosts(state) end end)
 player.CharacterAdded:Connect(function() task.defer(phase) end)
 phase()

@@ -190,12 +190,8 @@ function State.new(data,layouts,central,territories,options)
     local s={data=data,players={},units={},central=copy(central or {}),nav={},navOrder={},edges={},elapsed=0,nextUnit=0,status="Active",winner=nil,pvp=count(layouts)>1,bases={},baseOrder={},baseTotal=0,rng=options.rng}
     for _,uid in ipairs(sorted(layouts)) do
         local p={id=uid,name=(options.names and options.names[uid]) or uid,isBot=options.bots and options.bots[uid] or false,color=copy(options.colors and options.colors[uid]),resources={},discovered={Log=true},layout=copy(layouts[uid]),lands={},cleared={},buildings={},nodes={},camps={},training={},bridge=false,research={},researchJob=nil,defeated=false,active=true,departed=false,collected=0,trained=0,baseHP=500,baseMaxHP=500,admin=false,goldWorkers=0,wishAwards=0,
-            perks=copy(options.perks and options.perks[uid]),vetoUsed=false}
+            perks=copy(options.perks and options.perks[uid]),roundTickets=(options.tickets and tonumber(options.tickets[uid])) or 0}
         for _,r in ipairs(data.ResourceOrder) do p.resources[r]=0 end
-        -- Starter Crate (Robux pass): a small head start, never combat power.
-        if p.perks.StarterCrate then
-            for r,n in pairs(data.StarterCrate or {Log=60,Stone=30,Gold=5}) do p.resources[r]=n;p.discovered[r]=true end
-        end
         s.players[uid]=p
         for _,land in ipairs(sorted(data.Lands)) do if data.Lands[land].requires=="" then enableLand(s,p,land) end end
     end
@@ -355,7 +351,7 @@ function State.action(s,uid,op,payload)
         local pos=copy(b.pos);pos.x=pos.x+((have%3)-1)*.75
         spawn(s,p,b.kind=="LumberHut" and "Lumberjack" or "Miner",pos,"Worker",{building=key,resource=s.data.WorkerResources[b.kind]})
         return true,"Worker hired."
-    elseif op=="WishDraft" or op=="WishSubmit" or op=="AppendDraft" or op=="AppendSubmit" or op=="Veto" then
+    elseif op=="WishDraft" or op=="WishSubmit" or op=="AppendDraft" or op=="AppendSubmit" then
         -- Treat every admin input as untrusted data. A malformed prompt must
         -- produce a normal rejection message and never escape the action path.
         local ok,accepted,message=pcall(WishRules.action,s,uid,op,payload)
@@ -372,7 +368,6 @@ function State.action(s,uid,op,payload)
         if b.kind~="Townhall" and bestLevel(p,"Townhall")<required then return false,"Town Hall level required: "..required end
         local busy=0;local builders=1
         for _,v in pairs(p.buildings) do if v.upgrade then busy=busy+1 end;if v.kind=="BuilderHut" then builders=math.max(builders,stats(s,v).Builders or 1) end end
-        if p.perks and p.perks.MasterBuilder then builders=builders+1 end
         if busy>=builders then return false,"All builders are busy." end
         if not canPay(p,d.Cost) then return false,"Not enough resources for this upgrade." end
         pay(p,d.Cost);b.upgrade={left=math.min(d.BuildTime or 5,s.data.MaxBuildSeconds),target=b.level+1}
@@ -628,22 +623,21 @@ local function troopTick(s,u,dt)
         end
     end
 end
--- Consumable tokens bought in the Admin Vault. RoundServer spends the token
--- only after canUseToken succeeds, so a token is never wasted.
-function State.canUseToken(s,uid,kind)
+-- Admin panel tickets: free round tickets (VIP / ADMIN) are spent first,
+-- RoundServer spends a saved ticket only after canUseTicket succeeds.
+function State.canUseTicket(s,uid)
     local p=s.players[uid]
     if not p or p.defeated or not p.active or s.status~="Active" then return false,"This round is no longer active." end
-    if kind=="AdminToken" then return WishRules.canForce(s,uid) end
-    if kind=="SupplyDrop" then return true end
-    return false,"Unknown token."
+    return WishRules.canTicket(s,uid)
 end
-function State.useToken(s,uid,kind)
-    local ok,message=State.canUseToken(s,uid,kind);if not ok then return false,message end
-    local p=s.players[uid]
-    if kind=="AdminToken" then WishRules.force(s,uid);return true,"Admin Token used: the Admin Panel is yours!" end
-    for r,n in pairs(s.data.SupplyDrop or {Log=150,Stone=80,Gold=10}) do give(p,r,n) end
-    p.supplySerial=(p.supplySerial or 0)+1
-    return true,"Supply Drop delivered: 150 Wood, 80 Stone, 10 Gold."
+function State.roundTickets(s,uid) local p=s.players[uid];return p and p.roundTickets or 0 end
+function State.spendRoundTicket(s,uid)
+    local p=s.players[uid];if not p or (p.roundTickets or 0)<1 then return false end
+    p.roundTickets=p.roundTickets-1;return true
+end
+function State.useTicket(s,uid)
+    local ok,message=State.canUseTicket(s,uid);if not ok then return false,message end
+    return WishRules.useTicket(s,uid)
 end
 function State.remove(s,uid)
     local p=s.players[uid];if not p or p.departed then return end
@@ -806,7 +800,7 @@ function State.snapshot(s,uid)
         training=copy(p.training),research=copy(p.research),researchJob=p.researchJob and copy(p.researchJob) or nil,bridge=p.bridge,housing=State.housing(s,p),capacity=State.capacity(s,p),
         elapsed=math.floor(s.elapsed),remaining=nil,status=s.status,winner=s.winner,reason=s.reason,
         hint=State.hint(s,p),defeated=p.defeated,baseHP=math.ceil(p.baseHP),baseMaxHP=p.baseMaxHP,admin=false,goldWorkers=p.goldWorkers or 0,adminBoost=p.adminBoost or 1,
-        wish=WishRules.snapshot(s,uid),tokenReady=WishRules.canForce(s,uid)==true,frozen=(p.slowUntil or 0)>s.elapsed,
+        wish=WishRules.snapshot(s,uid),roundTickets=p.roundTickets or 0,ticketReady=WishRules.canTicket(s,uid)==true,ticketQueue=WishRules.queuePosition(s,uid),frozen=(p.slowUntil or 0)>s.elapsed,
         boosts={army=(p.armyBoostUntil or 0)>s.elapsed,workers=(p.workerBoostUntil or 0)>s.elapsed,shield=(p.shieldUntil or 0)>s.elapsed}}
 end
 State.copy=copy
