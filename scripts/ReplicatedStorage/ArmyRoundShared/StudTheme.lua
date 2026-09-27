@@ -13,12 +13,28 @@ local function liftAboveSkin(o)
     if skin and skin:IsA('GuiObject') and o~=skin and o.ZIndex<=skin.ZIndex then o.ZIndex=skin.ZIndex+1 end
 end
 Theme.lift=liftAboveSkin
+-- Text never spills out of its box: it is drawn at its design size and only
+-- shrinks (TextScaled capped by a UITextSizeConstraint) when it would not fit.
+local function fit(o,size)
+    local c=o:FindFirstChild('StudFit')
+    if not c then c=Instance.new('UITextSizeConstraint');c.Name='StudFit';c.Parent=o end
+    c.MaxTextSize=math.max(1,math.floor((size or 16)+.5));c.MinTextSize=math.min(c.MaxTextSize,8)
+    o.TextScaled=true
+    if not o:GetAttribute('StudFitBound') then
+        o:SetAttribute('StudFitBound',true)
+        o:GetPropertyChangedSignal('TextSize'):Connect(function()
+            local k=o:FindFirstChild('StudFit');if k then k.MaxTextSize=math.max(1,math.floor(o.TextSize+.5));k.MinTextSize=math.min(k.MaxTextSize,8) end
+        end)
+    end
+end
+Theme.fit=fit
 function Theme.text(o,size,color)
     for _,d in ipairs(o:GetChildren()) do if (d:IsA('UIStroke') and d.Name~='StudOutline') or d:IsA('UIGradient') or d:IsA('UITextSizeConstraint') then d:Destroy() end end
     liftAboveSkin(o)
     o.FontFace=Font.new('rbxasset://fonts/families/LegacyArial.json',Enum.FontWeight.Bold,Enum.FontStyle.Normal)
-    o.TextSize=size or 16;o.TextScaled=false;o.TextColor3=color or C.White;o.TextStrokeTransparency=1
+    o.TextSize=size or 16;o.TextColor3=color or C.White;o.TextStrokeTransparency=1
     o.RichText=false;o.TextTransparency=0
+    fit(o,size or 16)
     if o:IsA('TextLabel') and o:FindFirstChild('StudCaption') then o.TextTransparency=1 end
     return o
 end
@@ -41,7 +57,8 @@ function Theme.skin(o,color)
         local ink=o:FindFirstChild('StudCaption') or make('TextLabel',o,'StudCaption')
         ink.BackgroundTransparency=1;ink.Size=UDim2.new(1,-8,1,-4);ink.Position=UDim2.fromOffset(4,2);ink.ZIndex=o.ZIndex+3;ink.TextWrapped=true
         ink.FontFace=o.FontFace;ink.TextSize=o.TextSize;ink.TextColor3=o.TextColor3;ink.Text=o.Text;ink.RichText=o.RichText
-        ink.TextXAlignment=o.TextXAlignment;ink.TextYAlignment=o.TextYAlignment;ink.TextScaled=o.TextScaled
+        ink.TextXAlignment=o.TextXAlignment;ink.TextYAlignment=o.TextYAlignment
+        fit(ink,o.TextSize)
         o.TextTransparency=1
         if not o:GetAttribute('StudCaptionBound') then
             o:SetAttribute('StudCaptionBound',true)

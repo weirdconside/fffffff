@@ -55,6 +55,7 @@ sps = child(sp, 'StarterPlayerScripts')
 add_script(sps, 'LocalScript', 'LobbyAmbience', 'new/LobbyAmbience.client.lua')
 add_script(sps, 'LocalScript', 'UISounds', 'new/UISounds.client.lua')
 rf = item('ReplicatedFirst', 'ReplicatedFirst', ())
+add_script(rf, 'ModuleScript', 'TitleLogo', 'new/TitleLogo.lua')   # shared with the round loading curtain
 add_script(rf, 'LocalScript', 'TitleScreen', 'new/TitleScreen.client.lua')
 root.insert(list(root).index(rs), rf)
 # Lighting: the original lobby look, but without the washed-out "heaven" glare.

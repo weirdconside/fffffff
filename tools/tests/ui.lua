@@ -1,3 +1,4 @@
+do local m=Instance.new("ModuleScript");m.Name="TitleLogo";m.Parent=game:GetService("ReplicatedFirst") end
 for name in pairs(__modules) do local m=Instance.new("ModuleScript");m.Name=name;m.Parent=shared end
 local remote=Instance.new("RemoteEvent");remote.Name="DonationShopRemote";remote.Parent=shared
 local fired={}

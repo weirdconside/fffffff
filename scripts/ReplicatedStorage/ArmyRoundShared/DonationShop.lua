@@ -101,7 +101,8 @@ function Shop.new(parent,remote,catalog)
     label(header,'Title','ADMIN SHOP',32,C.Gold,{Position=UDim2.fromOffset(76,6),Size=UDim2.new(1,-330,0,36),TextXAlignment=Enum.TextXAlignment.Left,ZIndex=26})
     label(header,'Subtitle','ROBUX ONLY  -  BE THE ONE WHO TYPES THE COMMAND',13,C.White,{Position=UDim2.fromOffset(78,42),Size=UDim2.new(1,-330,0,18),TextXAlignment=Enum.TextXAlignment.Left,ZIndex=26})
     for i=1,9 do
-        local sp=make('Frame',header,'Sparkle'..i,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.new(.18+i*.075,0,.2+((i*37)%60)/100,0),Size=UDim2.fromOffset(6,6),Rotation=45,
+        -- twinkles live in the empty strip right of the title, never behind lettering
+        local sp=make('Frame',header,'Sparkle'..i,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromOffset(300+(i-1)*30,10+((i*37)%26)),Size=UDim2.fromOffset(6,6),Rotation=45,
             BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,ZIndex=24})
         self.sparkles[#self.sparkles+1]={frame=sp,seed=i*1.9}
     end
@@ -159,7 +160,7 @@ function Shop.new(parent,remote,catalog)
         amount.TextStrokeTransparency=0;amount.TextStrokeColor3=C.Ink
         local buy=make('TextButton',box,'Buy',{Text='R$ '..item.price,AnchorPoint=Vector2.new(.5,1),Position=UDim2.new(.5,0,1,-10),Size=UDim2.new(1,-18,0,36),ZIndex=28})
         Theme.button(buy,C.Green,17)
-        if item.badge then badge(box,item.badge,item.badge=='BEST VALUE' and C.Red or C.Blue,30,UDim2.fromOffset(-8,-6)) end
+        if item.badge then badge(box,item.badge,item.badge=='BEST VALUE' and C.Red or C.Blue,30,UDim2.fromOffset(-6,6)) end
         self.cards[item.key]={frame=box,buy=buy,item=item}
         self.connections[#self.connections+1]=buy.Activated:Connect(function() self:buy(item) end)
     end

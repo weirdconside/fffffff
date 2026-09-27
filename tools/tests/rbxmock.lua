@@ -227,7 +227,16 @@ local tweenService=newInstance("TweenService","TweenService")
 function tweenService:Create(o,info,props) return {Play=function() for k,v in pairs(props) do o[k]=v end end,Cancel=function() end,Completed=newSignal()} end
 services.TweenService=tweenService
 local runService=newInstance("RunService","RunService");function runService:IsStudio() return true end;function runService:BindToRenderStep() end;services.RunService=runService
-local textService=newInstance("TextService","TextService");function textService:GetTextSize(s,size) return Vector2.new(#s*size*.6,size) end;services.TextService=textService
+local textService=newInstance("TextService","TextService")
+function textService:GetTextSize(s,size,font)
+    local key=(type(font)=="table" and font.Name and font.Name:find("Fredoka")) and "fredoka" or "arial"
+    local tbl=__GLYPHW and __GLYPHW[key]
+    if not tbl then return Vector2.new(#s*size*.6,size) end
+    local w=0
+    for i=1,#s do local c=s:byte(i);w=w+(tbl[c-31] or 60)*size/100 end
+    return Vector2.new(w,size)
+end
+services.TextService=textService
 local mps=newInstance("MarketplaceService","MarketplaceService");function mps:GetProductInfo() return {PriceInRobux=99} end;services.MarketplaceService=mps
 local uis=newInstance("UserInputService","UserInputService");uis.TouchEnabled=false;uis.KeyboardEnabled=true;uis.MouseEnabled=true
 function uis:GetMouseLocation() return Vector2.new(0,0) end;function uis:IsKeyDown() return false end;function uis:GetFocusedTextBox() return nil end;services.UserInputService=uis

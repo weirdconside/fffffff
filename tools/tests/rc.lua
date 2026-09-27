@@ -1,3 +1,5 @@
+do local m=Instance.new("ModuleScript");m.Name="TitleLogo";m.Parent=game:GetService("ReplicatedFirst") end
+if __VPW then camera.ViewportSize=Vector2.new(__VPW,__VPH) end
 for name in pairs(__modules) do local m=Instance.new("ModuleScript");m.Name=name;m.Parent=shared end
 local command=Instance.new("RemoteEvent");command.Name="Command";command.Parent=shared
 local snapshots=Instance.new("RemoteEvent");snapshots.Name="Snapshot";snapshots.Parent=shared
@@ -39,6 +41,7 @@ for i=1,200 do State.step(s,.1) end
 push(nil);frames(5)
 s.players["1"].armyBoostUntil=s.elapsed+10;push(nil);frames(2)
 assert(boost:FindFirstChild("army",true).Visible,"army chip")
+if __VPW then dumpGui("round_hud",{playerGui}) end
 localPlayer:SetAttribute("ScenePhase","Lobby");frames(120)
 print("sent ops:");for _,x in ipairs(sent) do io=nil;print("  ",x[2]) end
 print("ERRORS:",#ERRORS)

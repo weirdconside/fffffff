@@ -3,6 +3,7 @@ import math, random, copy
 import numpy as np
 from lib import *
 import lobby as L
+import poses as PZ
 from lobby import TOP, WATER, hex_center, tc, R_HEX, part, cyl_v, light, model, folder, place_asset
 
 def orig_lobby(tree):
@@ -79,6 +80,79 @@ def yaw_to_face(src_dir, target_dir):
 ROOMS = [(58.0, -44.0), (64.0, 0.0), (58.0, 44.0)]
 SHOP_POS = (26.0, -46.0)
 SPAWN = (-6.0, 0.0)
+
+# ------------------------------------------------------------------ posed NPC scenes
+# kind, position (x, z), look-at (x, z), pose, scale
+SCENES = [
+    # raid: two barbarians, an archer and a wizard take on a giant south of the spawn
+    ('Giant', (-4, 44), (-4, 30), 'giant_smash', 3.0),
+    ('Barbarian', (-10.5, 34.5), (-4, 44), 'windup', 3.0),
+    ('Barbarian', (2.5, 35), (-4, 44), 'overhead', 3.0),
+    ('Archer', (10, 24), (-4, 44), 'aim', 3.0),
+    ('Wizard', (-18, 27), (-4, 44), 'cast', 3.0),
+    # sparring next to the barracks
+    ('Barbarian', (-23, -41), (-15, -41), 'windup', 3.0),
+    ('Barbarian', (-15, -41), (-23, -41), 'block', 3.0),
+    # archery practice
+    ('Archer', (-24, -18), (-40, -4), 'aim', 3.0),
+    # workers
+    ('Lumberjack', (-21.5, 68), (-18, 71), 'chop', 3.0),
+    ('Miner', (-89.5, -41.5), (-86, -45), 'mine', 3.0),
+    ('Builder', (-20.5, -92), (-30, -94), 'hammer', 3.0),
+    # a barbarian celebrating by the town hall
+    ('Barbarian', (-50, -13), (-6, 0), 'cheer', 3.0),
+]
+
+def archery_target(parent, pos, facing, y0):
+    """Straw target on an easel, facing (x, z) `facing`, with one arrow in it."""
+    m = model(parent, 'ArcheryTarget')
+    x, z = pos
+    d = np.array([facing[0] - x, facing[1] - z], float); d /= np.linalg.norm(d)
+    yaw = math.degrees(math.atan2(-d[1], d[0]))          # ry(yaw) turns +X onto d
+    side = np.array([-d[1], d[0]])
+    for k in (-1, 1):
+        lx, lz = x + side[0] * 1.7 * k - d[0] * 0.4, z + side[1] * 1.7 * k - d[1] * 0.4
+        part(m, 'Leg', (0.5, 5.2, 0.5), at(lx, y0 + 2.6, lz), (112, 78, 48), variant='Studs', collide=False)
+    part(m, 'Brace', (0.4, 0.4, 3.8), at(x - d[0] * 0.4, y0 + 2.2, z - d[1] * 0.4) * ry(yaw), (112, 78, 48), variant='Studs', collide=False)
+    rings = [(5.2, (236, 226, 196)), (4.0, (214, 52, 48)), (2.8, (245, 242, 232)), (1.5, (255, 204, 58))]
+    for i, (dia, col) in enumerate(rings):
+        off = i * 0.06
+        part(m, 'Ring', (0.4, dia, dia), at(x + d[0] * off, y0 + 4.4, z + d[1] * off) * ry(yaw), col, shape='cyl', collide=False)
+    # an arrow stuck just off centre, pointing back at the shooter
+    ax, az = x + d[0] * 1.0 + side[0] * 0.5, z + d[1] * 1.0 + side[1] * 0.5
+    part(m, 'Arrow', (2.2, 0.16, 0.16), at(ax, y0 + 4.9, az) * ry(yaw), (120, 86, 52), collide=False)
+    part(m, 'Fletching', (0.5, 0.45, 0.06), at(ax + d[0] * 1.1, y0 + 4.9, az + d[1] * 1.1) * ry(yaw), (230, 60, 60), collide=False)
+    part(m, 'Collision', (1.4, 5.5, 5.4), at(x, y0 + 2.75, z) * ry(yaw), (255, 255, 255), transparency=1, collide=True, query=False, shadow=False)
+    return m
+
+def place_scenes(ctx, scen, tiles, lift_at, taken):
+    folder_ = folder(scen, 'Garrison')
+    for kind, (x, z), look, pose_name, s in SCENES:
+        src = child(ctx.entities, kind)
+        y = TOP + lift_at(x, z) * 6.0
+        m = place_asset(ctx, folder_, src, (x, y, z), yaw=PZ.face_yaw((x, z), look), s=s, name=kind, collide=False, box=True,
+                        tags=['LobbyNPC'], box_shrink=0.7)
+        PZ.pose(m, src, pose_name, s)
+        taken.append((x, z, 6 if kind == 'Giant' else 3.5))
+        if kind == 'Wizard':
+            hand = PZ.hand_point(m, 'RArm')
+            orb = part(m, 'SpellOrb', (1.3, 1.3, 1.3), at(*hand), (176, 96, 255), material='Neon', shape='ball', collide=False,
+                       query=False, shadow=False, tags=['LobbySpell'])
+            light(orb, (176, 96, 255), 12, 1.2)
+            L.sparkles(orb, color=(196, 128, 255), rate=10, size=0.5)
+    # props the workers are busy with
+    tree_src = child(ctx.resources, 'Pine Tree')
+    for kind, src, (x, z), s, yaw in (('Pine Tree', tree_src, (-18, 71), 4.6, 30),
+                                      ('Crystal', child(ctx.resources, 'Crystal'), (-86, -45), 3.0, 70)):
+        y = TOP + lift_at(x, z) * 6.0
+        place_asset(ctx, folder_, src, (x, y, z), yaw=yaw, s=s, name=kind, collide=False, box=True, box_shrink=0.3,
+                    tags=['LobbyTree'] if kind == 'Pine Tree' else None)
+        taken.append((x, z, 3.5))
+    archery_target(folder_, (-40, -4), (-24, -18), TOP + lift_at(-40, -4) * 6.0)
+    taken.append((-40, -4, 4))
+    # keep the stages clear of random props and trees
+    for x, z, r in ((-4, 37, 17), (-19, -41, 9), (-32, -11, 11), (-19.5, 69.5, 6), (-88, -43, 6), (-21, -92, 5), (-50, -13, 5)):
+        taken.append((x, z, r))
 
 def build(tree):
     ctx = L.Ctx(tree)
@@ -162,7 +236,8 @@ def build(tree):
     # ------------------------------------------------------------ paths + lanterns
     deco = folder(scen, 'Details')
     lamps = []
-    ends = [(x - 10, z) for (x, z) in ROOMS] + [(SHOP_POS[0] - 4, SHOP_POS[1] + 8)]
+    # only the shop gets a path; the 0/6 squares stand on plain grass
+    ends = [(SHOP_POS[0] - 4, SHOP_POS[1] + 8)]
     for layer, (ex, ez) in enumerate(ends):
         a = (SPAWN[0] + 6, SPAWN[1]); b = (ex, ez)
         length = path(deco, a, b, 7, layer)
@@ -181,7 +256,7 @@ def build(tree):
             lantern(deco, (x + sx, TOP, z + sz), glow)
     taken = [(x, z, 13) for (x, z) in ROOMS] + [(SHOP_POS[0], SHOP_POS[1], 15), (SPAWN[0], SPAWN[1], 14)]
     corridor = []
-    for (ex, ez) in ends:
+    for (ex, ez) in ends + [(x - 10, z) for (x, z) in ROOMS]:   # walkways stay free of props
         a = (SPAWN[0] + 6, SPAWN[1]); length = math.hypot(ex - a[0], ez - a[1])
         for k in range(int(length // 5) + 1):
             t = k * 5 / length
@@ -198,22 +273,6 @@ def build(tree):
         place_asset(ctx, town, src, pos, yaw=yaw_b, s=s, name=kind, collide=False, box=True, box_shrink=0.8)
         lo, hi = world_bbox(src)
         taken.append((pos[0], pos[2], max(hi[0] - lo[0], hi[2] - lo[2]) * s * 0.55))
-    npcs = folder(scen, 'Garrison')
-    for kind, pos, yaw_n, s in L.NPCS:
-        if any(math.hypot(pos[0] - a, pos[2] - b) < rr for a, b, rr in taken[:5]): continue
-        src = child(ctx.entities, kind)
-        place_asset(ctx, npcs, src, pos, yaw=yaw_n, s=s, name=kind, collide=False, box=True, tags=['LobbyNPC'], box_shrink=0.7)
-        taken.append((pos[0], pos[2], 3))
-
-    def free_spot(cx, cz, rmin, rmax, clearance, tries=300):
-        for _ in range(tries):
-            ang = rnd.uniform(0, math.tau); rad = rnd.uniform(rmin, rmax)
-            x, z = cx + math.cos(ang) * rad, cz + math.sin(ang) * rad
-            if math.hypot(x - SPAWN[0], z - SPAWN[1]) < 16: continue
-            if any(math.hypot(x - a, z - b) < clearance + rr for a, b, rr in taken): continue
-            if not on_land(x, z): continue
-            return x, z
-        return None
     land_tiles = {qr: lift for qr, lift in tiles.items()}
     def tile_of(x, z):
         best, bd = None, 1e9
@@ -227,6 +286,16 @@ def build(tree):
     def lift_at(x, z):
         return land_tiles[tile_of(x, z)[0]]
 
+    def free_spot(cx, cz, rmin, rmax, clearance, tries=300):
+        for _ in range(tries):
+            ang = rnd.uniform(0, math.tau); rad = rnd.uniform(rmin, rmax)
+            x, z = cx + math.cos(ang) * rad, cz + math.sin(ang) * rad
+            if math.hypot(x - SPAWN[0], z - SPAWN[1]) < 16: continue
+            if any(math.hypot(x - a, z - b) < clearance + rr for a, b, rr in taken): continue
+            if not on_land(x, z): continue
+            return x, z
+        return None
+    place_scenes(ctx, scen, tiles, lift_at, taken)
     taken.extend(corridor)
     # ------------------------------------------------------------ game decorations: towers, carts, camps, mines, fences
     decor = find_decor(ctx)
@@ -313,7 +382,7 @@ def remove_overlaps(lobby):
                 oy = min(hi2[1], b[1]) - max(lo2[1], a[1])
                 if ox > 0 and oz > 0 and oy > 0:
                     clash = True; break
-            if clash and g not in ('NativeTeleporters', 'Shop'):
+            if clash and g not in ('NativeTeleporters', 'Shop', 'Garrison'):
                 m.getparent().remove(m); removed += 1
             else:
                 kept.append((lo2, hi2))

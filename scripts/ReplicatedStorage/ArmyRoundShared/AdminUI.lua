@@ -23,7 +23,7 @@ function Admin.new(parent,send)
     local shade=make('Frame',gui,'Shade');shade.Size=UDim2.fromScale(1,1);shade.BackgroundColor3=Color3.new(0,0,0);shade.BackgroundTransparency=.66;shade.BorderSizePixel=0;shade.Active=true;self.shade=shade
     local card=make('Frame',gui,'Card');card.AnchorPoint=Vector2.new(.5,.5);card.Position=UDim2.fromScale(.5,.5);card.Size=UDim2.fromOffset(600,162);card.ZIndex=3;Theme.skin(card,Theme.Colors.Panel);self.card=card
     local scale=make('UIScale',card);self.scale=scale
-    self.title=label(card,'Title','ADMIN PANEL',24,UDim2.fromOffset(20,15),UDim2.new(1,-105,0,30),Theme.Colors.Gold)
+    self.title=label(card,'Title','ADMIN PANEL',24,UDim2.fromOffset(20,15),UDim2.new(1,-112,0,30),Theme.Colors.Gold)
     self.title.TextXAlignment=Enum.TextXAlignment.Left
     self.timer=label(card,'Timer','15s',18,UDim2.new(1,-74,0,18),UDim2.fromOffset(54,26));self.timer.TextXAlignment=Enum.TextXAlignment.Right
     local field=make('Frame',card,'Field');field.Position=UDim2.fromOffset(20,62);field.Size=UDim2.new(1,-40,0,60);field.ZIndex=5;Theme.skin(field,Theme.Colors.Dark);self.field=field

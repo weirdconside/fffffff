@@ -8,7 +8,7 @@ local player=Players.LocalPlayer
 local lobby=Workspace:WaitForChild("LobbyWorld",60)
 if not lobby then return end
 local RANGE=380
-local spinners,flags,sails,trees,textures={},{},{},{},{}
+local spinners,flags,sails,trees,textures,spells={},{},{},{},{},{}
 local function center(model)
     local ok,cf,size=pcall(function() return model:GetBoundingBox() end)
     if ok then return cf,size end
@@ -33,6 +33,12 @@ for i,p in ipairs(CollectionService:GetTagged("LobbySail")) do
     if p:IsA("BasePart") and p:IsDescendantOf(lobby) then sails[#sails+1]={part=p,base=p.CFrame,seed=i*.7} end
 end
 -- Lobby figures (tag LobbyNPC) are statues: they keep their pose and never move.
+-- Only the wizard's spell orb is alive: it floats, spins and pulses.
+for i,p in ipairs(CollectionService:GetTagged("LobbySpell")) do
+    if p:IsA("BasePart") and p:IsDescendantOf(lobby) then
+        spells[#spells+1]={part=p,base=p.CFrame,size=p.Size,light=p:FindFirstChildOfClass("PointLight"),seed=i*2.3}
+    end
+end
 for i,m in ipairs(CollectionService:GetTagged("LobbyTree")) do
     if m:IsA("Model") and m:IsDescendantOf(lobby) then
         local cf,size=center(m)
@@ -62,6 +68,14 @@ RunService.RenderStepped:Connect(function(dt)
     end
     for _,s in ipairs(sails) do
         if near(s.base.Position,cam) then s.part.CFrame=s.base*CFrame.new(math.sin(clock*1.3+s.seed)*.14,0,0) end
+    end
+    for _,s in ipairs(spells) do
+        if near(s.base.Position,cam) then
+            local k=math.sin(clock*4+s.seed)
+            s.part.Size=s.size*(1+k*.12)
+            s.part.CFrame=s.base*CFrame.new(0,math.sin(clock*2+s.seed)*.18,0)*CFrame.Angles(clock*1.7,clock*2.3,0)
+            if s.light then s.light.Brightness=1.1+k*.4 end
+        end
     end
     for _,t in ipairs(textures) do
         t.texture.OffsetStudsU=t.u+clock*t.speed;t.texture.OffsetStudsV=t.v+clock*t.speed*.5

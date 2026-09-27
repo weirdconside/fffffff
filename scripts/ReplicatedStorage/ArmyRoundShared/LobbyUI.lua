@@ -7,6 +7,7 @@ local RunService=game:GetService('RunService')
 local TweenService=game:GetService('TweenService')
 local C=Theme.Colors
 local Lobby={};Lobby.__index=Lobby
+local BAR_W=480
 local ROOM_COLORS={Color3.fromRGB(52,142,230),Color3.fromRGB(147,72,213),Color3.fromRGB(64,170,90)}
 local function make(class,parent,name,props)
     local o=Instance.new(class);o.Name=name or class
@@ -51,18 +52,21 @@ function Lobby.new(parent,uid,command)
     end)
     button('Leave','LEAVE',240,196,122,50,C.Red,20,function() self:leave() end)
     -- status bar for everybody on board ---------------------------------------------
-    local bar=make('Frame',gui,'Status',{AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,0,68),Size=UDim2.fromOffset(470,54),Visible=false,Active=true})
+    -- [ ROOM n ] [ PLAYERS x/y        ] [ LEAVE ]
+    --            [ STARTS IN 12s      ]
+    local bar=make('Frame',gui,'Status',{AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,0,68),Size=UDim2.fromOffset(BAR_W,58),Visible=false,Active=true})
     Theme.skin(bar,C.Panel);self.bar=bar;self.barScale=make('UIScale',bar)
-    local chip=make('Frame',bar,'Chip',{Position=UDim2.fromOffset(8,8),Size=UDim2.fromOffset(150,38),ZIndex=5});Theme.skin(chip,ROOM_COLORS[1]);self.chip=chip
-    self.chipText=text(chip,'Room','ROOM 1',15,C.White,{Size=UDim2.fromScale(1,1),ZIndex=7})
-    self.barText=text(bar,'Text','PLAYERS 1/4  -  STARTS IN 15s',17,C.Gold,{Position=UDim2.fromOffset(166,8),Size=UDim2.fromOffset(184,38),ZIndex=5})
-    local leave=make('TextButton',bar,'Leave',{Text='LEAVE',Position=UDim2.new(1,-110,0,8),Size=UDim2.fromOffset(102,38),ZIndex=6});Theme.button(leave,C.Red,17)
+    local chip=make('Frame',bar,'Chip',{Position=UDim2.fromOffset(8,8),Size=UDim2.fromOffset(118,42),ZIndex=5});Theme.skin(chip,ROOM_COLORS[1]);self.chip=chip
+    self.chipText=text(chip,'Room','ROOM 1',17,C.White,{Size=UDim2.fromScale(1,1),ZIndex=7})
+    self.barText=text(bar,'Text','PLAYERS 1/4',19,C.Gold,{Position=UDim2.fromOffset(134,7),Size=UDim2.new(1,-252,0,24),ZIndex=5})
+    self.barSub=text(bar,'Sub','STARTS IN 15s',13,C.Muted,{Position=UDim2.fromOffset(134,32),Size=UDim2.new(1,-252,0,18),ZIndex=5})
+    local leave=make('TextButton',bar,'Leave',{Text='LEAVE',Position=UDim2.new(1,-110,0,9),Size=UDim2.fromOffset(102,40),ZIndex=6});Theme.button(leave,C.Red,18)
     leave.Activated:Connect(function() self:leave() end)
     self.connection=RunService.Heartbeat:Connect(function()
         local c=Workspace.CurrentCamera;if not c then return end
         local v=c.ViewportSize
         if card.Visible then self.scale.Scale=math.max(.4,math.min(1,(v.X-28)/380,(v.Y-60)/262)) end
-        if bar.Visible then self.barScale.Scale=math.max(.5,math.min(1,(v.X-20)/470)) end
+        if bar.Visible then self.barScale.Scale=math.max(.5,math.min(1,(v.X-20)/BAR_W)) end
     end)
     self:refresh();return self
 end
@@ -104,9 +108,11 @@ function Lobby:update(l,active,message)
     self.bar.Visible=not choosing
     if l.capacity then
         local full=(l.count or 0)>=l.capacity
-        self.barText.Text='PLAYERS '..tostring(l.count or 0)..'/'..tostring(l.capacity)..'  -  '..(full and 'STARTING ' or 'STARTS IN ')..tostring(l.remaining or 0)..'s'
+        self.barText.Text='PLAYERS '..tostring(l.count or 0)..'/'..tostring(l.capacity)
+        self.barSub.Text=(full and 'FULL  -  STARTING IN ' or 'STARTS IN ')..tostring(l.remaining or 0)..'s'
     else
-        self.barText.Text=l.host==self.uid and 'CHOOSE THE ROOM SIZE' or 'THE HOST IS CHOOSING'
+        self.barText.Text=l.host==self.uid and 'CHOOSE THE SIZE' or 'HOST IS CHOOSING'
+        self.barSub.Text='HOW MANY PLAYERS?'
     end
 end
 function Lobby:hide() self.card.Visible=false;self.bar.Visible=false;self.room=nil;self.pending=false;self.selected=1;self:refresh() end
