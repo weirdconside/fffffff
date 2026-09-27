@@ -1,6 +1,6 @@
 import sys,os
 base=os.path.dirname(os.path.abspath(__file__))+'/..'
-mods={'TypingRules':'src/TypingRules.lua','WishRules':'new/WishRules.lua','RoundState':'new/RoundState.lua','RoundData':'src/RoundData.lua','RoundBots':'src/RoundBots.lua'}
+mods={'TypingRules':'src/TypingRules.lua','WishRules':'new/WishRules.lua','RoundState':'new/RoundState.lua','RoundData':'src/RoundData.lua','RoundBots':'src/RoundBots.lua','AdminCommands':'new/AdminCommands.lua','AdminActions':'new/AdminActions.lua'}
 if len(sys.argv)>2:
     for kv in sys.argv[2:]:
         k,v=kv.split('=');mods[k]=v

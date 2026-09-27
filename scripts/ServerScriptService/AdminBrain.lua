@@ -6,54 +6,70 @@ local Brain={}
 local SECRET_NAME='GEMINI_API_KEY'
 local MODELS={'gemini-2.5-flash','gemini-flash-latest','gemini-2.0-flash'}
 local BASE='https://generativelanguage.googleapis.com/v1beta/models/'
-local BUILDINGS={'Townhall','Barracks','Campsite','LumberHut','MinerHut','GoldMine','Sawmill','Foundry','OreMinerHut','CrystalMinerHut','TrainingCamp','BuilderHut'}
-local ACTIONS={'damage_troops','kill_troops','heal_troops','damage_base','heal_base','summon','give','take','steal',
-    'freeze','slow','boost_army','boost_workers','shield','instant_build','level_up','buff_troops','attack'}
+local Actions=require(script.Parent.AdminActions)
 local SYSTEM=[[
 You are the ADMIN PANEL of the Roblox strategy game "BATTLE BUT WITH ADMIN PANEL".
-Players build bases, gather resources, train troops and capture each other's town halls.
-Every 2 minutes one player (the author) types ANY command. Sometimes a roulette lets every other
-player append their own text to it ("additions"). You turn the final command into game actions.
+Players build bases (buildings with levels), gather resources (Log, Stone, Gold, Plank, Iron Ore, Iron Bar, Crystal, Trophy),
+train troops (Barbarian, Archer, Giant, Wizard), unlock lands, build a bridge, capture neutral islands and attack each
+other's town halls. Every 2 minutes one player (the AUTHOR) types ANY command. Sometimes a roulette lets the other players
+append their own text ("additions"). Turn the final command into actions from the list below.
 
-Rules:
-- Execute the command if it can be done with the actions below (any wording, any language, typos are fine;
-  obvious equivalents count: "nuke them" = damage_troops, "make me rich" = give Gold, "stop them" = freeze).
-- If the command does not fit the game's actions (it asks for something the game has no action for, e.g.
-  "turn everyone into chickens", "give me admin", "change the sky colour") or is sexual, hateful or real-world
-  harmful: set refused=true, actions=[], and a short reason. Do not invent a substitute effect.
-- Additions modify the command, in order. They can redirect the target ("but it hits the author"),
-  weaken or strengthen it ("half strength", "x10"), add new effects, or cancel it ("cancel", "nothing happens").
-  Set cancelled=true only if an addition clearly cancels the whole command.
-- If a single addition does not fit the game's actions, ignore only that addition and put its player's name in
-  rejected_additions. The command and the other additions still run.
-- target: "author", "enemies" (everyone except the author), "everyone", "random_enemy", or an exact player name
-  from the players list. For "attack", target is whose army attacks and victim is the player being attacked.
-- Numbers: count 1-15 (summon), amount (give; Gold up to 150, Log up to 1200, Stone up to 800, others up to 80-250),
-  percent 10-100, seconds 3-60, power 1-3. Use what the player asked for; the game clamps the rest.
-- Actions:
-  damage_troops (any attack on troops, percent of HP, style meteor|lightning), kill_troops, heal_troops,
-  damage_base (hit a town hall, percent of HP, never fully destroys it), heal_base,
-  summon (unit Barbarian|Archer|Giant|Wizard, count), give (resource, amount), take (resource, percent),
-  steal (from target to author, resource, percent), freeze (troops fully stop, seconds), slow (seconds),
-  boost_army (more damage, seconds, power), boost_workers (faster gathering, seconds, power),
-  shield (base takes less damage, seconds), instant_build (finish upgrades/training/research now),
-  level_up (building, count), buff_troops (permanent bigger HP and damage for current troops, percent), attack (victim).
-- Use 1 to 4 actions.
-- caption: one short hype line (max 70 characters) in the SAME language as the command, describing what happens,
-  no swearing, e.g. "Метеоритный дождь накрыл армию Bob!" or "Alice summoned 5 giants!".
-- reason (when refused): one short line in the SAME language as the command, e.g. "В игре нельзя превращать в куриц".
+WHAT IS ALLOWED: anything the actions can do, as strong as the player asks. Be generous and literal with numbers:
+"100 soldiers" = summon 100 Barbarian; "1000 gold" = give 1000 Gold; "freeze them for a minute" = 60 seconds.
+The only limit is 200 troops per player (the game enforces it; still ask for the full number).
+Screen and control tricks are allowed: "disable everyone's keyboards and mice" = disable_controls on everyone,
+"flip their screens" = screen flip, "make it night" = weather night.
+
+WHAT MUST BE REFUSED (refused=true, actions=[], short reason in the command's language):
+- things that do not exist in this game: creepers, dragons, zombies, cars, guns, planes, new unit types, new buildings,
+  moving/spawning/teleporting the PLAYER'S CHARACTER ("spawn me in the middle of the map"), flying, changing the map;
+- kicking, banning, removing or eliminating players, ending or winning the round directly;
+- anything with Robux, game passes, VIP, ADMIN pass, tickets, donations, admin rights, or anything that lasts after the round;
+- sexual, hateful or real-world harmful content.
+If the command mixes allowed and not-allowed parts, do the allowed parts and mention the rest in the caption.
+
+TARGETS: "author", "enemies" (everyone except the author), "everyone", "random_enemy", "except:<name>", or an exact
+player name from the players list. In the AUTHOR's command "me/my/I/мне/мой" = author. In an ADDITION, "me/my/I" means
+the player who wrote that addition (use their exact name), and "him/the author/автору" means the author.
+For attack and teleport_troops, target = whose army moves; victim / to = where it goes.
+
+ADDITIONS modify the command, in order: redirect targets ("but it hits the author"), change strength ("x10",
+"half"), add new effects ("and give me 100 archers" -> summon for that player), or cancel ("cancel", "nothing happens"
+-> cancelled=true). If ONE addition asks for something not allowed or not in the game, skip only that addition and put
+its player's name in rejected_additions; everything else still runs.
+
+ACTIONS (fields in brackets):
+damage_troops [percent 1-100, style meteor|lightning] meteors/lightning/any attack on troops
+kill_troops - wipe out troops;  heal_troops [percent];  damage_base [percent] hits a town hall (never below 1 HP);  heal_base [percent]
+summon [unit, count] troops appear at the target's barracks;  give [resource or "all", amount, factor for "double"]
+take [resource or "all", percent];  steal [resource or "all", percent, to = receiver];  swap_resources [to]
+freeze [seconds] troops and workers stop;  slow [seconds];  haste [seconds, power 1-5] troops move/attack faster
+boost_army [seconds, power 1-10] more damage;  buff_troops [percent -90..900] permanent HP+damage of current troops (negative = weaken)
+invincible [seconds] nothing can hurt them;  shield [seconds] base takes less damage;  boost_workers [seconds, power]
+instant_build - finish upgrades/training/research/crafting now;  level_up [building or empty for all, levels, count]
+level_down [building, levels];  research_up [unit or empty for all, levels];  expand [count] unlock lands for free
+bridge - build their bridge;  capture_island [count] take neutral/enemy islands (never town halls)
+attack [victim] send the army at a player's town hall;  teleport_troops [to: home|center|<player name>]
+convert_troops [percent, to] troops switch sides;  disable_controls [seconds] the player cannot give orders
+screen [effect blind|shake|flip|blur|rainbow, seconds] on the target's screen;  weather [effect night|day|rain|snow|fog|disco, seconds] for everyone
+announce [text] big text on everyone's screen
+Seconds: up to 120. Use as many actions as needed (max 16).
+
+caption: one short hype line (max 70 characters) in the SAME language as the command, e.g. "Bob получил 100 воинов!".
 Reply with JSON only.]]
 local function schema()
     local str={type='STRING'};local int={type='INTEGER'}
-    local resources={'Log','Stone','Gold','Plank','Iron Ore','Iron Bar','Crystal','Trophy','all'}
+    local resources=table.clone(Actions.Resources);resources[#resources+1]='all'
+    local effects=table.clone(Actions.ScreenEffects);for _,w in ipairs(Actions.Weather) do effects[#effects+1]=w end
     return {type='OBJECT',properties={
         caption=str,refused={type='BOOLEAN'},cancelled={type='BOOLEAN'},reason=str,rejected_additions={type='ARRAY',items=str},
         actions={type='ARRAY',items={type='OBJECT',properties={
-            type={type='STRING',enum=ACTIONS},target=str,
-            unit={type='STRING',enum={'Barbarian','Archer','Giant','Wizard'}},
-            resource={type='STRING',enum=resources},building={type='STRING',enum=BUILDINGS},
-            victim=str,style={type='STRING',enum={'meteor','lightning'}},count=int,amount=int,percent=int,seconds=int,power=int,
-        },required={'type','target'}}},
+            type={type='STRING',enum=Actions.Types},target=str,
+            unit={type='STRING',enum=Actions.UnitKinds},resource={type='STRING',enum=resources},
+            building={type='STRING',enum=Actions.Buildings},effect={type='STRING',enum=effects},
+            style={type='STRING',enum={'meteor','lightning'}},victim=str,to=str,text=str,
+            count=int,amount=int,percent=int,seconds=int,power=int,levels=int,factor=int,
+        },required={'type'}}},
     },required={'caption','actions'}}
 end
 local secret,secretChecked=nil,false
@@ -97,7 +113,7 @@ end
 function Brain.ask(job)
     if not getSecret() then return nil end
     local input={author=job.author,command=job.command,additions=job.additions,players=job.players}
-    local config={temperature=.8,maxOutputTokens=700,responseMimeType='application/json',responseSchema=schema()}
+    local config={temperature=.4,maxOutputTokens=1500,responseMimeType='application/json',responseSchema=schema()}
     local order={}
     if workingModel then order[1]=workingModel end
     for _,m in ipairs(MODELS) do if m~=workingModel then order[#order+1]=m end end

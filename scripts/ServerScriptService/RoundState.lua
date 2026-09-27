@@ -21,6 +21,7 @@ local function sorted(t)
     local keys={}; for k in pairs(t) do keys[#keys+1]=k end
     table.sort(keys,function(a,b) return tostring(a)<tostring(b) end); return keys
 end
+local ADMIN_HOOKS -- filled in at the end of this file
 local function canPay(p,cost)
     for k,v in pairs(cost or {}) do
         if not finite(v) or v<0 or (p.resources[k] or 0)<v then return false end
@@ -196,29 +197,8 @@ function State.new(data,layouts,central,territories,options)
         for _,land in ipairs(sorted(data.Lands)) do if data.Lands[land].requires=="" then enableLand(s,p,land) end end
     end
     s.wish=WishRules.new(s.players,{rng=s.rng})
-    -- Admin commands that create units go through the normal spawn path.
-    s.wishHooks={summon=function(state,p,kind,n)
-        -- Admin summons ignore housing; WishRules caps how many troops a player can hold.
-        local troop=state.data.Troops.Troops[kind];if not troop then return end
-        local at,camp
-        for _,key in ipairs(sorted(p.buildings)) do local b=p.buildings[key]
-            if b.kind=="Barracks" and not at then at=b.pos end
-            if b.kind=="Campsite" and not camp then camp=b.pos end
-        end
-        at=at or p.layout.lands.S1;camp=camp or at
-        for i=1,n do
-            local pos=copy(at);pos.x=pos.x+math.cos(i*2.4)*1.2;pos.z=pos.z+math.sin(i*2.4)*1.2
-            local u=spawn(state,p,kind,pos,"Troop");u.summoned=true
-            local goal=copy(camp);goal.x=goal.x+math.cos(state.nextUnit*2.4)*2;goal.z=goal.z+math.sin(state.nextUnit*2.4)*2
-            if p.rally then goal=copy(p.rally.pos);u.mode="AttackMove";u.orderBase=p.rally.base;u.orderEnemy=p.rally.enemy end
-            go(state,u,goal)
-        end
-        return at
-    end,attack=function(state,p,victim)
-        local base=victim.baseId and state.bases[victim.baseId]
-        if not base or base.owner~=victim.id then return 0 end
-        return rally(state,p,base.pos,nil,base.id,nil)
-    end}
+    -- Admin panel actions reach the simulation only through these hooks (see ADMIN_HOOKS below).
+    s.wishHooks=ADMIN_HOOKS;s.summonQueue={}
     -- Every objective is registered once. Disconnects never reduce the target count.
     for _,uid in ipairs(sorted(s.players)) do
         local p=s.players[uid]
@@ -278,6 +258,10 @@ function State.action(s,uid,op,payload)
     local p=s.players[uid]
     if not p or p.defeated or not p.active or s.status~="Active" then return false,"This round is no longer active." end
     payload=type(payload)=="table" and payload or {}
+    local adminOp=op=="WishDraft" or op=="WishSubmit" or op=="AppendDraft" or op=="AppendSubmit" or op=="Sync" or op=="UseTicket"
+    if not adminOp and (p.controlsLockedUntil or 0)>s.elapsed then
+        return false,"Your controls are disabled by the admin panel for "..math.ceil(p.controlsLockedUntil-s.elapsed).."s!"
+    end
     if op=="Collect" then
         local b=p.buildings[payload.key];if not b then return false,"This is not your building." end
         local resource=s.data.WorkerResources[b.kind] or (b.kind=="GoldMine" and "Gold")
@@ -562,6 +546,7 @@ local function troopTick(s,u,dt)
         if (owner.slowFactor or .5)<=0 then u.mode="Frozen";return end
         dt=dt*(owner.slowFactor or .5)
     else u.frozen=nil end
+    if owner and (owner.hasteUntil or 0)>s.elapsed then dt=dt*(1+.5*(owner.hastePower or 2)) end
     u.cooldown=math.max(0,u.cooldown-dt)
     local target,dd=nil,math.huge
     local explicit=u.orderEnemy and s.units[u.orderEnemy]
@@ -589,7 +574,8 @@ local function troopTick(s,u,dt)
                 local def=s.data.Troops.Troops[u.kind];local splash=def and def.Splash or 0
                 for _,id in ipairs(nearUnits(s,target.pos,math.max(splash,1))) do
                     local victim=s.units[id]
-                    if victim and victim.hp>0 and hostile(u,victim) and (victim==target or (splash>0 and dist(victim.pos,target.pos)<=splash)) then
+                    local guarded=victim and s.players[victim.owner] and (s.players[victim.owner].invincibleUntil or 0)>s.elapsed
+                    if victim and not guarded and victim.hp>0 and hostile(u,victim) and (victim==target or (splash>0 and dist(victim.pos,target.pos)<=splash)) then
                         local attacker=s.players[u.owner]
                         local boost=attacker and (attacker.armyBoostUntil or 0)>s.elapsed and (1+.25*(attacker.armyBoostStrength or 1)) or 1
                         victim.hp=math.max(0,victim.hp-u.damage*boost)
@@ -623,6 +609,7 @@ local function troopTick(s,u,dt)
                     local attacker=s.players[u.owner];local defender=s.players[b.owner]
                     local boost=attacker and (attacker.armyBoostUntil or 0)>s.elapsed and (1+.25*(attacker.armyBoostStrength or 1)) or 1
                     local shield=defender and (defender.shieldUntil or 0)>s.elapsed and (1-.35*(defender.shieldStrength or 1)) or 1
+                    if defender and (defender.invincibleUntil or 0)>s.elapsed then shield=0 end
                     b.hp=math.max(0,b.hp-u.damage*boost*shield);u.cooldown=u.interval
                     u.mode="Fighting";u.facing=copy(b.pos);u.targetPos=copy(b.pos)
                     u.attackSerial=(u.attackSerial or 0)+1
@@ -704,6 +691,26 @@ local function objectiveTick(s,dt)
     end
 end
 
+local function applyResearch(s,p,kind,level)
+    local oldMult=1+((p.research[kind] or 1)-1)*s.data.Research.StatMultPerLevel
+    p.research[kind]=level;local mult=1+(level-1)*s.data.Research.StatMultPerLevel
+    for _,u in pairs(s.units) do if u.owner==p.id and u.kind==kind then u.maxHP=u.maxHP/oldMult*mult;u.hp=math.min(u.maxHP,u.hp/oldMult*mult);u.damage=u.damage/oldMult*mult end end
+    p.researchSerial=(p.researchSerial or 0)+1
+end
+local function spawnSummoned(s,p,kind,i)
+    local at,camp
+    for _,key in ipairs(sorted(p.buildings)) do local b=p.buildings[key]
+        if b.kind=="Barracks" and not at then at=b.pos end
+        if b.kind=="Campsite" and not camp then camp=b.pos end
+    end
+    at=at or p.layout.lands.S1;camp=camp or at
+    local pos=copy(at);pos.x=pos.x+math.cos(i*2.4)*1.4;pos.z=pos.z+math.sin(i*2.4)*1.4
+    local u=spawn(s,p,kind,pos,"Troop");u.summoned=true
+    local goal=copy(camp);local r=2+math.min(10,math.sqrt(i))
+    goal.x=goal.x+math.cos(s.nextUnit*2.4)*r;goal.z=goal.z+math.sin(s.nextUnit*2.4)*r
+    if p.rally then goal=copy(p.rally.pos);u.mode="AttackMove";u.orderBase=p.rally.base;u.orderEnemy=p.rally.enemy end
+    go(s,u,goal)
+end
 function State.step(s,dt)
     if not finite(dt) or dt<=0 or dt>1 or s.status~="Active" then return end
     s.elapsed=s.elapsed+dt
@@ -746,11 +753,20 @@ function State.step(s,dt)
             if p.researchJob then
                 local job=p.researchJob;job.left=job.left-dt
                 if job.left<=0 then
-                    local oldMult=1+((p.research[job.kind] or 1)-1)*s.data.Research.StatMultPerLevel
-                    p.research[job.kind]=job.level;local mult=1+(job.level-1)*s.data.Research.StatMultPerLevel
-                    for _,u in pairs(s.units) do if u.owner==uid and u.kind==job.kind then u.maxHP=u.maxHP/oldMult*mult;u.hp=math.min(u.maxHP,u.hp/oldMult*mult);u.damage=u.damage/oldMult*mult end end
-                    p.researchJob=nil;p.researchSerial=(p.researchSerial or 0)+1
+                    applyResearch(s,p,job.kind,job.level)
+                    p.researchJob=nil
                 end
+            end
+        end
+    end
+    if s.summonQueue and s.summonQueue[1] then
+        local budget=8
+        while budget>0 and s.summonQueue[1] do
+            local job=s.summonQueue[1];local p=s.players[job.uid]
+            if not p or p.defeated or not p.active then table.remove(s.summonQueue,1)
+            else
+                job.done=(job.done or 0)+1;spawnSummoned(s,p,job.kind,job.done);budget=budget-1
+                if job.done>=job.n then table.remove(s.summonQueue,1) end
             end
         end
     end
@@ -770,7 +786,8 @@ function State.step(s,dt)
                 else u.mode="Building";u.path=nil;u.facing=copy(b.pos);u.chop=u.chop+dt
                     if u.chop>=s.data.ChopInterval then u.chop=0;u.workSerial=u.workSerial+1 end
                 end
-            elseif u.role=="Worker" then local p=s.players[u.owner];if p and not p.defeated then workerTick(s,p,u,dt) end
+            elseif u.role=="Worker" then local p=s.players[u.owner]
+                if p and not p.defeated and not ((p.slowUntil or 0)>s.elapsed and (p.slowFactor or .5)<=0) then workerTick(s,p,u,dt) end
             elseif u.role=="GoldWorker" then local p=s.players[u.owner];if p and not p.defeated then goldWorkerTick(s,p,u,dt) end
             else troopTick(s,u,dt) end
         end
@@ -809,9 +826,118 @@ function State.snapshot(s,uid)
         training=copy(p.training),research=copy(p.research),researchJob=p.researchJob and copy(p.researchJob) or nil,bridge=p.bridge,housing=State.housing(s,p),capacity=State.capacity(s,p),
         elapsed=math.floor(s.elapsed),remaining=nil,status=s.status,winner=s.winner,reason=s.reason,
         hint=State.hint(s,p),defeated=p.defeated,baseHP=math.ceil(p.baseHP),baseMaxHP=p.baseMaxHP,admin=false,goldWorkers=p.goldWorkers or 0,adminBoost=p.adminBoost or 1,
-        wish=WishRules.snapshot(s,uid),roundTickets=p.roundTickets or 0,ticketReady=WishRules.canTicket(s,uid)==true,ticketQueue=WishRules.queuePosition(s,uid),frozen=(p.slowUntil or 0)>s.elapsed,
+        wish=WishRules.snapshot(s,uid),roundTickets=p.roundTickets or 0,ticketReady=WishRules.canTicket(s,uid)==true,ticketQueue=WishRules.queuePosition(s,uid),frozen=(p.slowUntil or 0)>s.elapsed,locked=math.max(0,math.ceil((p.controlsLockedUntil or 0)-s.elapsed)),
         boosts={army=(p.armyBoostUntil or 0)>s.elapsed,workers=(p.workerBoostUntil or 0)>s.elapsed,shield=(p.shieldUntil or 0)>s.elapsed}}
 end
+-- ------------------------------------------------------------------ admin panel hooks
+local function troopCount(s,p)
+    local n=0
+    for _,u in pairs(s.units) do if u.owner==p.id and u.role=="Troop" and u.hp>0 then n=n+1 end end
+    for _,job in ipairs(s.summonQueue or {}) do if job.uid==p.id then n=n+job.n-(job.done or 0) end end
+    return n
+end
+local function barracksPos(p)
+    for _,key in ipairs(sorted(p.buildings)) do local b=p.buildings[key];if b.kind=="Barracks" then return b.pos end end
+    return p.layout.lands.S1
+end
+ADMIN_HOOKS={
+    troopCount=troopCount,
+    summon=function(s,p,kind,n)
+        if not s.data.Troops.Troops[kind] then return nil end
+        s.summonQueue=s.summonQueue or {}
+        s.summonQueue[#s.summonQueue+1]={uid=p.id,kind=kind,n=n,done=0}
+        return barracksPos(p)
+    end,
+    attack=function(s,p,victim)
+        local base=victim.baseId and s.bases[victim.baseId]
+        if not base or base.owner~=victim.id then return 0 end
+        local n=rally(s,p,base.pos,nil,base.id,nil)
+        if n==0 and (not p.bridge or not victim.bridge) then
+            -- no way across yet: the admin panel lays both bridges, the army still has to walk and fight
+            p.bridge=true;victim.bridge=true;rebuildNav(s)
+            n=rally(s,p,base.pos,nil,base.id,nil)
+        end
+        return n
+    end,
+    center=function(s)
+        for _,key in ipairs(sorted(s.central)) do if key:sub(1,2)=="C:" then return s.central[key] end end
+        return nil
+    end,
+    teleport=function(s,p,pos,near)
+        -- next to an enemy town hall, never on top of it: the army lands beside it and still has to fight
+        if near then
+            local home=p.baseId and s.bases[p.baseId];local from=home and home.pos or p.layout.lands.S1
+            local dx,dz=from.x-pos.x,from.z-pos.z;local d=math.max(.01,math.sqrt(dx*dx+dz*dz))
+            pos={x=pos.x+dx/d*16,y=pos.y,z=pos.z+dz/d*16}
+        end
+        local n=0
+        for _,id in ipairs(sorted(s.units)) do
+            local u=s.units[id]
+            if u.owner==p.id and u.role=="Troop" and u.hp>0 then
+                n=n+1;local a=n*2.39996;local r=1.2+math.sqrt(n)*.9
+                u.pos={x=pos.x+math.cos(a)*r,y=pos.y,z=pos.z+math.sin(a)*r}
+                u.path=nil;u.goal=copy(pos);u.mode="Idle";u.orderBase=nil;u.orderEnemy=nil;u.target=nil
+            end
+        end
+        return n
+    end,
+    convert=function(s,from,to,pct,max)
+        local list={}
+        for _,id in ipairs(sorted(s.units)) do local u=s.units[id];if u.owner==from.id and u.role=="Troop" and u.hp>0 then list[#list+1]=u end end
+        local n=math.min(math.ceil(#list*pct),math.max(0,max-troopCount(s,to)))
+        for i=1,n do
+            local old=list[i];s.units[old.id]=nil
+            local u=spawn(s,to,old.kind,old.pos,"Troop");u.hp=math.max(1,u.maxHP*old.hp/math.max(1,old.maxHP));u.summoned=true
+            go(s,u,barracksPos(to))
+        end
+        return n
+    end,
+    setLevel=function(s,p,b,level)
+        b.upgrade=nil;b.level=level;addWorkers(s,p,b)
+        if b.kind=="Townhall" and p.baseId and s.bases[p.baseId] then
+            local base=s.bases[p.baseId];local old=base.maxHP
+            base.maxHP=400+b.level*100;base.hp=math.clamp(base.hp+base.maxHP-old,1,base.maxHP)
+            p.baseHP=base.hp;p.baseMaxHP=base.maxHP
+        end
+    end,
+    research=function(s,p,kind,levels)
+        local list=s.data.Research.Research[kind];if not list then return false end
+        local top=1;for level in pairs(list) do top=math.max(top,level) end
+        local now=p.research[kind] or 1;local target=math.min(top,now+levels)
+        if target<=now then return false end
+        if p.researchJob and p.researchJob.kind==kind then p.researchJob=nil end
+        applyResearch(s,p,kind,target);return true
+    end,
+    expand=function(s,p,count)
+        local n=0
+        while n<count do
+            local pick
+            for _,key in ipairs(sorted(s.data.Lands)) do
+                local d=s.data.Lands[key]
+                if not p.cleared[key] and (d.requires=="" or p.cleared[d.requires]) then pick=key;break end
+            end
+            if not pick then break end
+            local camp=p.camps[pick]
+            if camp then for id in pairs(camp.guards) do s.units[id]=nil end;camp.cleared=true end
+            enableLand(s,p,pick);n=n+1
+        end
+        if n>0 then rebuildNav(s) end
+        return n
+    end,
+    bridge=function(s,p) p.bridge=true;rebuildNav(s) end,
+    captureIslands=function(s,p,count)
+        local home=p.baseId and s.bases[p.baseId];local list={}
+        for _,id in ipairs(s.baseOrder) do local b=s.bases[id];if b.kind=="Territory" and b.owner~=p.id then list[#list+1]=b end end
+        if home then table.sort(list,function(a,b) return dist(a.pos,home.pos)<dist(b.pos,home.pos) end) end
+        local n=0
+        for i=1,math.min(count,#list) do
+            local b=list[i]
+            for id in pairs(b.guards) do s.units[id]=nil end
+            if captureBase(s,b,p.id) then n=n+1 end
+        end
+        return n
+    end,
+}
 State.copy=copy
 -- Read-only route probe for diagnostics and the repeatable playthrough.
 State.route=route

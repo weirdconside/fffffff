@@ -405,6 +405,11 @@ RunService.Heartbeat:Connect(function(dt)
                                 for _,key in ipairs({"caption","reason"}) do
                                     if type(plan[key])=="string" then plan[key]=viewer and filterPublic(viewer,plan[key]) or nil end
                                 end
+                                if type(plan.actions)=="table" then
+                                    for _,action in ipairs(plan.actions) do
+                                        if type(action)=="table" and type(action.text)=="string" then action.text=viewer and filterPublic(viewer,action.text) or nil end
+                                    end
+                                end
                             end
                             if sessions[room.id]==session and session.state then
                                 WishRules.resolve(session.state,think.eventId,plan)

@@ -162,11 +162,19 @@ function Admin:layout()
 end
 function Admin:update(wish)
     if type(wish)~='table' or not wish.eventId or wish.phase=='Idle' then self:reset();return end
-    -- the server spends a second or two turning the command into actions: no extra window,
-    -- the last view just stays (without the input box) until the result arrives
+    -- While the server works out the command (a second or two) nothing new is shown: the current
+    -- view is frozen as it is. Its timers are NOT reset, so the roulette never spins a second time.
     if wish.phase=='Thinking' then
-        wish=table.clone(wish);wish.phase=(self.event==wish.eventId and self.phase) or 'Roulette'
-        wish.canType=false;wish.remainingExact=0;wish.remaining=0
+        if self.event==wish.eventId and self.phase then
+            self.canType=false
+            if self.card.Visible then
+                self.card.Visible=false;self.hint.Visible=false;self.manual:allow(false)
+                if self.input:IsFocused() then self.input:ReleaseFocus() end
+                self:layout()
+            end
+            return
+        end
+        wish=table.clone(wish);wish.phase='Announcement';wish.canType=false
     end
     local changed=self.event~=wish.eventId or self.phase~=wish.phase
     if changed then self.pending=false;self.error.Visible=false end
@@ -263,8 +271,11 @@ function Admin:render()
     end
     if self.phase=='Roulette' then
         -- Animate for 4.6 seconds; hold the selected cell for the last 0.4 seconds.
-        -- Snapshots give phase progress so late clients never restart the spin.
-        local t=math.clamp((self.elapsed+age)/4.6,0,1);local eased=1-(1-t)^4
+        -- Progress only moves forward, so a late or repeated snapshot never restarts the spin.
+        local t=math.clamp((self.elapsed+age)/4.6,0,1)
+        if self.spinEvent~=self.event then self.spinEvent=self.event;self.spinT=0 end
+        t=math.max(t,self.spinT or 0);self.spinT=t
+        local eased=1-(1-t)^4
         local index=self.choice=='Append' and 24 or 23
         local center=(640-208)/2
         self.strip.Position=UDim2.fromOffset(center-(index-1)*216*eased,0)

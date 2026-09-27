@@ -113,11 +113,127 @@ FX.steal=function(at,info)
         task.wait(.06)
     end
 end
+-- ------------------------------------------------------------------ timed effects (screen, controls, weather)
+-- They only exist during a round and are removed when the player leaves it.
+local Players=game:GetService('Players')
+local RunService=game:GetService('RunService')
+local player=Players.LocalPlayer
+local FREDOKA=Font.new('rbxasset://fonts/families/FredokaOne.json',Enum.FontWeight.Bold,Enum.FontStyle.Normal)
+local timed={}   -- name -> {untilAt, cleanup}
+local function screenGui(name,order)
+    local g=Instance.new('ScreenGui');g.Name=name;g.ResetOnSpawn=false;g.IgnoreGuiInset=true;g.DisplayOrder=order
+    g.ScreenInsets=Enum.ScreenInsets.None;g.Parent=player:WaitForChild('PlayerGui');return g
+end
+local function label(parent,text,size,pos,color)
+    local l=Instance.new('TextLabel');l.BackgroundTransparency=1;l.Size=size;l.Position=pos;l.AnchorPoint=Vector2.new(.5,.5)
+    l.FontFace=FREDOKA;l.TextScaled=true;l.Text=text;l.TextColor3=color or Color3.new(1,1,1);l.Parent=parent
+    local st=Instance.new('UIStroke');st.Thickness=3;st.Color=Color3.fromRGB(30,24,20);st.Parent=l
+    return l
+end
+local function stop(name)
+    local t=timed[name];if not t then return end
+    timed[name]=nil;pcall(t.cleanup)
+end
+local function start(name,seconds,make)
+    seconds=math.clamp(tonumber(seconds) or 10,1,120)
+    if timed[name] then timed[name].untilAt=os.clock()+seconds;return timed[name] end
+    local t={untilAt=os.clock()+seconds}
+    t.cleanup=make(t) or function() end
+    timed[name]=t;return t
+end
+local function colorFx(t,props)
+    local cc=Instance.new('ColorCorrectionEffect');cc.Name='AdminFX_CC'
+    for k,v in pairs(props) do cc[k]=v end
+    cc.Parent=Workspace.CurrentCamera or Workspace;t.cc=cc
+    return function() cc:Destroy() end
+end
+local function particles(t,color,speed,size,rate,lifetime)
+    local box=part({Transparency=1,Size=Vector3.new(90,1,90)})
+    local e=Instance.new('ParticleEmitter');e.Color=ColorSequence.new(color);e.LightEmission=.2;e.Rate=rate
+    e.Size=NumberSequence.new(size);e.Speed=NumberRange.new(speed,speed*1.2);e.Lifetime=NumberRange.new(lifetime,lifetime)
+    e.EmissionDirection=Enum.NormalId.Bottom;e.SpreadAngle=Vector2.new(4,4);e.Transparency=NumberSequence.new(.2)
+    e.Parent=box;t.follow=box
+    return function() box:Destroy() end
+end
+local WEATHER={
+    night=function(t) return colorFx(t,{Brightness=-.28,Contrast=.12,Saturation=-.25,TintColor=Color3.fromRGB(150,170,255)}) end,
+    day=function(t) return colorFx(t,{Brightness=.08,Contrast=.05,Saturation=.2,TintColor=Color3.fromRGB(255,244,222)}) end,
+    fog=function(t) return colorFx(t,{Brightness=.12,Contrast=-.35,Saturation=-.45,TintColor=Color3.fromRGB(225,230,235)}) end,
+    rain=function(t)
+        local a=colorFx(t,{Brightness=-.1,Saturation=-.3,TintColor=Color3.fromRGB(200,210,230)})
+        local b=particles(t,Color3.fromRGB(170,200,255),90,.18,900,.7)
+        return function() a();b() end
+    end,
+    snow=function(t)
+        local a=colorFx(t,{Brightness=.05,Saturation=-.2,TintColor=Color3.fromRGB(235,242,255)})
+        local b=particles(t,Color3.fromRGB(255,255,255),12,.45,300,4)
+        return function() a();b() end
+    end,
+    disco=function(t) t.disco=true;return colorFx(t,{Saturation=.6,Contrast=.2}) end,
+}
+local SCREEN={
+    blind=function(t)
+        local g=screenGui('AdminBlind',30)
+        local f=Instance.new('Frame');f.Size=UDim2.fromScale(1,1);f.BackgroundColor3=Color3.new(0,0,0);f.BorderSizePixel=0;f.Parent=g
+        t.text=label(g,'BLINDED BY THE ADMIN PANEL',UDim2.new(.8,0,0,40),UDim2.fromScale(.5,.5))
+        return function() g:Destroy() end
+    end,
+    blur=function(t) local b=Instance.new('BlurEffect');b.Size=20;b.Parent=Workspace.CurrentCamera or Workspace;return function() b:Destroy() end end,
+    rainbow=function(t) t.disco=true;return colorFx(t,{Saturation=.8,Contrast=.15}) end,
+    shake=function(t) t.shake=true end,
+    flip=function(t) t.flip=true end,
+}
+local function controls(t)
+    local g=screenGui('AdminControlsLock',40)
+    -- an invisible full-screen button swallows taps and clicks on the round (the admin panel sits above it)
+    local sink=Instance.new('TextButton');sink.Text='';sink.BackgroundTransparency=1;sink.Size=UDim2.fromScale(1,1);sink.AutoButtonColor=false;sink.Parent=g
+    t.text=label(g,'CONTROLS DISABLED',UDim2.new(.7,0,0,44),UDim2.new(.5,0,.8,0),Color3.fromRGB(255,120,110))
+    return function() g:Destroy() end
+end
+local announceGui
+local function announce(text,from)
+    announceGui=announceGui or screenGui('AdminAnnounce',75)
+    announceGui:ClearAllChildren()
+    local l=label(announceGui,tostring(text),UDim2.new(.86,0,0,64),UDim2.new(.5,0,.36,0),Color3.fromRGB(255,226,90))
+    local sub=label(announceGui,'- '..tostring(from or 'Admin'),UDim2.new(.5,0,0,26),UDim2.new(.5,0,.36,44))
+    l.TextTransparency=1;tween(l,.3,{TextTransparency=0})
+    task.delay(6,function() if l.Parent then tween(l,.5,{TextTransparency=1});tween(sub,.5,{TextTransparency=1});Debris:AddItem(l,.6);Debris:AddItem(sub,.6) end end)
+end
+RunService:BindToRenderStep('AdminFXCamera',Enum.RenderPriority.Camera.Value+5,function()
+    local camera=Workspace.CurrentCamera;if not camera then return end
+    local now=os.clock()
+    for name,t in pairs(timed) do
+        if now>=t.untilAt then stop(name)
+        else
+            if t.text then t.text.Text=t.text.Text:gsub(' %(%d+%)$','')..' ('..math.ceil(t.untilAt-now)..')' end
+            if t.follow then t.follow.CFrame=CFrame.new(camera.CFrame.Position+Vector3.new(0,30,0)) end
+            if t.disco and t.cc then t.cc.TintColor=Color3.fromHSV((now*.6)%1,.55,1) end
+        end
+    end
+    local cf=camera.CFrame
+    if timed.shake then cf=cf*CFrame.new(rng:NextNumber(-.6,.6),rng:NextNumber(-.6,.6),0)*CFrame.Angles(0,0,math.rad(rng:NextNumber(-2.5,2.5))) end
+    if timed.flip then cf=cf*CFrame.Angles(0,0,math.pi) end
+    if cf~=camera.CFrame then camera.CFrame=cf end
+end)
+local function clearAll() for name in pairs(timed) do stop(name) end end
+player:GetAttributeChangedSignal('ScenePhase'):Connect(function() if player:GetAttribute('ScenePhase')~='Round' then clearAll() end end)
+local me=tostring(player.UserId)
+local function special(item)
+    if item.k=='screen' and item.uid==me and SCREEN[item.e] then start(item.e,item.t,SCREEN[item.e]);return true end
+    if item.k=='controls' and item.uid==me then start('controls',item.t,controls);return true end
+    if item.k=='weather' and WEATHER[item.e] then
+        for name in pairs(WEATHER) do if name~=item.e and timed['w_'..name] then stop('w_'..name) end end
+        start('w_'..item.e,item.t,WEATHER[item.e]);return true
+    end
+    if item.k=='announce' and type(item.text)=='string' then announce(item.text,item.from);return true end
+    return item.k=='screen' or item.k=='controls'
+end
 remote.OnClientEvent:Connect(function(list)
     if type(list)~='table' then return end
     local camera=Workspace.CurrentCamera
     for i,item in ipairs(list) do
         if i>160 then break end
+        if type(item)=='table' and special(item) then continue end
         local fn=type(item)=='table' and FX[item.k]
         if fn and type(item.p)=='table' then
             local at=v3(item.p)

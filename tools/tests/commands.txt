@@ -1,0 +1,138 @@
+# category | expected action | Russian | English
+Метеоры и удары | damage_troops | метеоры на врагов | meteor on enemies
+Метеоры и удары | damage_troops | метеоритный дождь на Bob | meteor shower on Bob
+Метеоры и удары | damage_troops | ядерный удар по врагам | nuke the enemies
+Метеоры и удары | damage_troops | взорви армию Carl | blow up Carl's army
+Метеоры и удары | damage_troops | сбрось бомбы на врагов | drop bombs on the enemies
+Метеоры и удары | damage_troops | молния на Bob | lightning on Bob
+Метеоры и удары | damage_troops | удар молнии по врагам | lightning strike on enemies
+Метеоры и удары | damage_troops | обстрел ракетами по армии Bob | rocket strike on Bob's army
+Метеоры и удары | damage_troops | огненный шар в Carl | fireball at Carl
+Метеоры и удары | damage_troops | нанеси врагам 50% урона | deal 50% damage to enemies
+Метеоры и удары | damage_troops | артиллерия по врагам | artillery on enemies
+Метеоры и удары | damage_troops | астероид на Bob | asteroid on Bob
+Метеоры и удары | damage_troops | метеоры на всех | meteors on everyone
+Метеоры и удары | damage_troops | бомби армию врагов | bomb the enemy army
+Уничтожить армию | kill_troops | убей армию Bob | kill Bob's army
+Уничтожить армию | kill_troops | уничтожь всех врагов | destroy all enemies
+Уничтожить армию | kill_troops | убей всех | kill everyone
+Уничтожить армию | kill_troops | истреби армию Carl | wipe out Carl's army
+Уничтожить армию | kill_troops | перебей всех солдат врагов | kill all enemy soldiers
+Уничтожить армию | kill_troops | ликвидируй армию врагов | eliminate the enemy army
+Удар по базе | damage_base | уничтожь базу Bob | destroy Bob's base
+Удар по базе | damage_base | метеор на базу Carl | meteor on Carl's base
+Удар по базе | damage_base | разнеси ратушу врагов | smash the enemy town hall
+Удар по базе | damage_base | ударь по замку Bob | hit Bob's castle
+Удар по базе | damage_base | молния в базу врагов | lightning on the enemy base
+Лечение | heal_troops | вылечи мою армию | heal my army
+Лечение | heal_troops | вылечи всех моих солдат | heal all my soldiers
+Лечение | heal_troops | исцели армию Bob | heal Bob's army
+Лечение | heal_troops | восстанови мою армию | restore my army
+Лечение | heal_troops | вылечи всех | heal everyone
+Лечение | heal_base | почини мою базу | repair my base
+Лечение | heal_base | восстанови мою ратушу | restore my town hall
+Лечение | heal_base | отремонтируй замок | fix my castle
+Войска | summon | дай мне 100 военных | give me 100 soldiers
+Войска | summon | призови 50 гигантов | summon 50 giants
+Войска | summon | заспавни 20 магов | spawn 20 wizards
+Войска | summon | создай 30 лучников | create 30 archers
+Войска | summon | дай мне армию из 100 воинов | give me an army of 100 warriors
+Войска | summon | 100 варваров | 100 barbarians
+Войска | summon | дай Bob 10 гигантов | give Bob 10 giants
+Войска | summon | призови 10 гигантов и 20 магов | summon 10 giants and 20 wizards
+Войска | summon | дай мне 200 солдат | give me 200 troops
+Войска | summon | вызови подкрепление | call reinforcements
+Войска | summon | найми 40 воинов | hire 40 warriors
+Войска | summon | дай всем по 10 лучников | give everyone 10 archers
+Войска | summon | дай мне сто гигантов | give me a hundred giants
+Войска | summon | призови армию | summon an army
+Ресурсы | give | дай мне 1000 золота | give me 1000 gold
+Ресурсы | give | дай мне 500 дерева | give me 500 wood
+Ресурсы | give | дай мне 300 камня | give me 300 stone
+Ресурсы | give | дай мне 100 кристаллов | give me 100 crystals
+Ресурсы | give | дай мне 50 железа | give me 50 iron
+Ресурсы | give | дай мне 100 руды | give me 100 ore
+Ресурсы | give | дай мне 200 досок | give me 200 planks
+Ресурсы | give | дай мне трофеи | give me trophies
+Ресурсы | give | дай мне все ресурсы | give me all resources
+Ресурсы | give | дай всем по 100 золота | give everyone 100 gold
+Ресурсы | give | дай Bob 500 золота | give Bob 500 gold
+Ресурсы | give | удвой моё золото | double my gold
+Ресурсы | give | утрой мои ресурсы | triple my resources
+Ресурсы | give | золотой дождь | gold rain
+Ресурсы | give | дай мне 1000 золота и 500 дерева | give me 1000 gold and 500 wood
+Ресурсы | give | хочу больше золота | i want more gold
+Ресурсы | give | начисли мне 10000 монет | add 10000 coins to me
+Отнять ресурсы | take | забери у Bob всё золото | take all of Bob's gold
+Отнять ресурсы | take | обнули золото врагов | reset the enemies' gold
+Отнять ресурсы | take | отними у врагов дерево | take wood from the enemies
+Отнять ресурсы | take | удали ресурсы Carl | delete Carl's resources
+Кража | steal | укради золото у Bob | steal Bob's gold
+Кража | steal | ограбь врагов | rob the enemies
+Кража | steal | укради у всех ресурсы | steal resources from everyone
+Кража | steal | стащи камень у Carl | steal stone from Carl
+Кража | swap_resources | поменяйся ресурсами с Bob | swap resources with Bob
+Заморозка | freeze | заморозь врагов | freeze the enemies
+Заморозка | freeze | заморозь Bob на 30 секунд | freeze Bob for 30 seconds
+Заморозка | freeze | заморозь всех кроме меня | freeze everyone except me
+Заморозка | freeze | заморозь всех на минуту | freeze everyone for a minute
+Заморозка | freeze | останови армию Carl | stop Carl's army
+Заморозка | freeze | оглуши Bob | stun Bob
+Заморозка | slow | замедли врагов | slow down the enemies
+Заморозка | slow | замедли Bob на 40 секунд | slow Bob for 40 seconds
+Усиления | haste | ускорь мою армию | speed up my army
+Усиления | haste | сделай мою армию быстрее | make my army faster
+Усиления | boost_army | усиль мою армию | boost my army
+Усиления | boost_army | сделай армию сильнее в 5 раз | make my army 5 times stronger
+Усиления | boost_army | ярость для моей армии | rage for my army
+Усиления | buff_troops | сделай мою армию огромной | make my army huge
+Усиления | buff_troops | дай моей армии больше хп | give my army more hp
+Усиления | buff_troops | ослабь армию врагов | weaken the enemy army
+Усиления | invincible | сделай мою армию неуязвимой на 30 секунд | make my army invincible for 30 seconds
+Усиления | invincible | бессмертие для меня | god mode for me
+Усиления | invincible | мир | peace
+Усиления | shield | щит на мою базу | shield my base
+Усиления | shield | защити мою базу на минуту | protect my base for a minute
+Стройка | boost_workers | ускорь моих рабочих | speed up my workers
+Стройка | boost_workers | усиль добычу | boost production
+Стройка | instant_build | построй всё мгновенно | build everything instantly
+Стройка | instant_build | достройка всего | finish construction
+Стройка | level_up | улучши все здания | upgrade all buildings
+Стройка | level_up | прокачай ратушу до максимума | max out my town hall
+Стройка | level_up | улучши казармы на 2 уровня | upgrade my barracks by 2 levels
+Стройка | level_up | улучши лагерь | upgrade my camp
+Стройка | level_down | понизь здания Bob | downgrade Bob's buildings
+Стройка | level_down | понизь ратушу врагов | downgrade the enemy town hall
+Стройка | research_up | прокачай исследования | research everything
+Стройка | research_up | изучи гигантов | research giants
+Земли и острова | expand | открой новые земли | unlock new lands
+Земли и острова | expand | открой 3 земли | unlock 3 lands
+Земли и острова | expand | расширь мою территорию | expand my territory
+Земли и острова | bridge | построй мост | build the bridge
+Земли и острова | capture_island | захвати остров | capture an island
+Земли и острова | capture_island | захвати все острова | capture all islands
+Атака и армия | attack | атакуй Bob | attack Bob
+Атака и армия | attack | отправь армию на Carl | send my army to Carl
+Атака и армия | attack | в атаку на врагов | attack the enemies
+Атака и армия | teleport_troops | телепортируй мою армию в центр | teleport my army to the center
+Атака и армия | teleport_troops | телепортируй армию на базу Bob | teleport my army to Bob's base
+Атака и армия | teleport_troops | телепортируй армию домой | teleport my army home
+Атака и армия | convert_troops | перемани армию Bob | convert Bob's army
+Атака и армия | convert_troops | пусть армия Carl перейдёт ко мне | make Carl's army join me
+Управление и экран | disable_controls | отключи всем клавиатуры и мышки | disable everyone's keyboards and mice
+Управление и экран | disable_controls | отключи врагам управление на 20 секунд | disable the enemies' controls for 20 seconds
+Управление и экран | disable_controls | заблокируй мышку Bob | block Bob's mouse
+Управление и экран | screen | ослепи врагов | blind the enemies
+Управление и экран | screen | затряси экран Bob | shake Bob's screen
+Управление и экран | screen | землетрясение | earthquake
+Управление и экран | screen | переверни экран врагам | flip the enemies' screens
+Управление и экран | screen | размой экран Carl | blur Carl's screen
+Управление и экран | screen | радуга на экране у всех | rainbow screen for everyone
+Погода | weather | сделай ночь | make it night
+Погода | weather | сделай день | make it day
+Погода | weather | пусть пойдёт снег | let it snow
+Погода | weather | включи дождь | make it rain
+Погода | weather | туман везде | fog everywhere
+Погода | weather | дискотека | disco party
+Объявления | announce | скажи всем что я король | say I am the king
+Объявления | announce | объяви что Bob нуб | announce Bob is a noob

@@ -7,67 +7,54 @@ for i,uid in ipairs(uids) do local L={lands={},buildings={},nodes={}}
  for k,d in pairs(Data.ResourceNodes) do L.nodes[k]={x=d.pos.x+i*300,y=L.lands[d.land].y,z=d.pos.z} end
  layouts[uid]=L end
 local s=State.new(Data,layouts,{},{},{names={["1"]="Alice",["2"]="Bob",["3"]="Carl"},bots={},colors={},rng=rng})
-State.setRng(s,rng)
-for _,id in ipairs(uids) do s.wishHooks.summon(s,s.players[id],"Barbarian",4) end
-local function army(uid) local n,hp=0,0;for _,u in pairs(s.units) do if u.owner==uid and u.role=="Troop" then n=n+1;hp=hp+u.hp end end;return n,hp end
-local function fresh(prompt,adds)
-  s.wish.event=nil;s.fx={}
-  local e={id="t"..tostring(rng()),recipient="1",prompt=prompt,buffers={},submitted={},pending={},additions=adds or {},applied=false}
-  s.wish.event=e;return e
+local forced="Execute"
+State.setRng(s,function() return forced=="Execute" and .1 or .9 end)
+local function step(n) for _=1,n do State.step(s,.1);s.fx={} end end
+local function typeText(uid,op,text,ev)
+  for i=1,utf8.len(text) do local cut=text:sub(1,utf8.offset(text,i+1)-1);local ok,msg=State.action(s,uid,op.."Draft",{eventId=ev.id,prompt=cut,text=cut});if not ok then return false,msg end end
+  return State.action(s,uid,op.."Submit",{eventId=ev.id})
 end
-local phrases={
- "meteor on enemies","метеориты на врагов","summon 50 giants","призови 5 гигантов","heal my army","вылечи мою армию",
- "freeze everyone except me","заморозь Bob","give me 100 gold","дай мне золото","steal their wood","укради дерево у Carl",
- "upgrade my town hall","улучши ратушу","shield my base","защити мою базу","kill Bob","убей всех врагов",
- "destroy Carl's base","уничтожь базу Bob","boost my army and nuke them","ускорь рабочих","make my army huge",
- "attack Bob","атакуй Carl","I win","turn everyone into chickens","asdfgh","build everything instantly","дай все ресурсы",
- "lightning on Bob","замедли врагов","мир во всем мире"}
-local fails=0
-for _,text in ipairs(phrases) do
-  local e=fresh(text)
-  local plan=W.localPlan(s,e)
-  local ok,msg,outcome=W.execute(s,e,plan)
-  local types={};for _,a in ipairs(plan.actions or {}) do types[#types+1]=a.type..":"..tostring(a.target) end
-  print(string.format("%-34s %-5s %-40s | %s",text,tostring(ok),table.concat(types,","),tostring(msg):gsub("\n"," / ")))
-  if not ok then fails=fails+1 end
-  -- restore armies so later lines have something to hit
-  for _,id in ipairs(uids) do if army(id)<3 then s.wishHooks.summon(s,s.players[id],"Barbarian",4) end;s.players[id].slowUntil=0 end
+local function approveAll(filter) for _,j in ipairs(W.pending(s)) do W.approve(s,j.uid,j.eventId,j.phase,filter and filter(j.text) or j.text) end end
+local function runEvent(command,roulette,adds,filter)
+  forced=roulette
+  s.wish.event=nil;s.wish.nextAt=0;step(1)
+  local ev=s.wish.event;assert(ev and ev.phase=="Prompt")
+  local author=ev.recipient
+  assert(typeText(author,"Wish",command,ev))
+  approveAll(filter)
+  local guard=0
+  while ev.phase~="Applied" and ev.phase~="Thinking" and guard<300 do
+    step(1);guard=guard+1
+    if ev.phase=="Append" and not ev.typed then
+      ev.typed=true
+      local okAuthor=State.canWish(s,author,"AppendDraft",ev.id)
+      print("  author may append:",okAuthor)
+      for id,text in pairs(adds or {}) do if id~=author then print("  add by",s.players[id].name,typeText(id,"Append",text,ev)) end end
+    end
+    approveAll(filter)
+  end
+  return ev,author
 end
-print("local fails",fails)
--- additions
-local e=fresh("meteor on enemies",{["2"]="but it hits the author",["3"]="x2"})
-local p=W.localPlan(s,e);print("adds:",p.actions[1].type,p.actions[1].target,p.actions[1].percent)
-e=fresh("summon 5 giants",{["2"]="cancel"});print("cancel:",W.execute(s,e,W.localPlan(s,e)))
--- AI plan path + clamps + bad data
-e=fresh("x");local before=s.players["1"].resources.Gold or 0
-print("ai:",W.execute(s,e,{caption="Gold rain!",actions={{type="give",target="author",resource="Gold",amount=999999},{type="summon",target="Bob",unit="Dragon",count=1000},{type="nope"},{type="freeze",target="everyone",seconds=99999}}}))
-print("gold gained",(s.players["1"].resources.Gold or 0)-before,"bob army",army("2"),"freeze left",s.players["3"].slowUntil-s.elapsed)
-print("junk:",W.execute(s,e,"garbage"),W.execute(s,e,{actions={}}),W.execute(s,e,{refused=true,reason="no"}))
--- full flow: Thinking -> resolve (AI) and Thinking -> timeout (local)
-s.wish.event=nil;s.wish.nextAt=0
-local fxCount=0
-local function step(n) for _=1,n do State.step(s,.1);if s.fx then fxCount=fxCount+#s.fx;s.fx={} end end end
-step(2)
-local ev=s.wish.event;assert(ev and ev.phase=="Prompt","event opened")
-local author=ev.recipient
-for i=1,#"meteor on everyone" do assert(State.action(s,author,"WishDraft",{eventId=ev.id,prompt=("meteor on everyone"):sub(1,i)})) end
-assert(State.action(s,author,"WishSubmit",{eventId=ev.id}))
-for _,j in ipairs(W.pending(s)) do W.approve(s,j.uid,j.eventId,j.phase,j.text) end
-local guard=0
-while ev.phase~="Thinking" and guard<400 do step(1);guard=guard+1
-  if ev.phase=="Append" then for _,id in ipairs(uids) do if id~=author and not ev.submitted[id] then
-    for i=1,#"and freeze them" do State.action(s,id,"AppendDraft",{eventId=ev.id,text=("and freeze them"):sub(1,i)}) end end end end
-  for _,j in ipairs(W.pending(s)) do W.approve(s,j.uid,j.eventId,j.phase,j.text) end
-end
-print("phase",ev.phase,"choice",ev.choice,"final",ev.finalPrompt)
-local job=W.thinking(s);assert(job and job.command=="meteor on everyone",'job');assert(W.thinking(s)==nil,'job once')
-step(95)
-print("timeout ->",ev.phase,ev.outcome,ev.effect,"fx",fxCount)
--- strict rules
-e=fresh("turn everyone into chickens");print("chickens:",W.execute(s,e,W.localPlan(s,e)))
-e=fresh("meteor on enemies",{["2"]="and paint the sky pink",["3"]="but half strength"})
-local ok2,msg2=W.execute(s,e,W.localPlan(s,e));print("bad addition:",ok2,msg2,"rejected2",e.rejected and e.rejected["2"],"rejected3",e.rejected and e.rejected["3"])
-e=fresh("meteor on enemies",{["2"]="x"});print("ai reject add:",W.execute(s,e,{caption="Boom",actions={{type="damage_troops",target="enemies"}},rejected_additions={"Bob"}}),e.rejected["2"])
--- author cannot append
-s.wish.event=nil;local ev2=fresh("meteor");ev2.phase="Append";ev2.deadline=s.elapsed+10
-print("author append allowed:",State.canWish(s,"1","AppendDraft",ev2.id),"other:",State.canWish(s,"2","AppendDraft",ev2.id))
+-- 1) dictionary command: executes right after the roulette, no Thinking phase
+local ev,author=runEvent("дай мне 100 военных","Execute")
+print("1 phase",ev.phase,"source",ev.source,ev.effect)
+step(60);local n=0;for _,u in pairs(s.units) do if u.owner==author and u.role=="Troop" then n=n+1 end end;print("  troops",n)
+-- 2) unknown words: waits for the AI, AI plan executes
+ev,author=runEvent("преврати врагов в ледяные статуи","Execute")
+print("2 phase",ev.phase)
+local job=W.thinking(s);print("  job command:",job and job.command)
+W.resolve(s,job.eventId,{caption="Ледяные статуи!",actions={{type="freeze",target="enemies",seconds=30}}})
+print("  ",ev.phase,ev.source,ev.outcome,(ev.effect:gsub("\n"," / ")))
+-- 3) AI refuses (creepers)
+ev=runEvent("заспавни пару криперов","Execute");local job2=W.thinking(s)
+W.resolve(s,job2.eventId,{refused=true,reason="В игре нет криперов",actions={}});print("3",ev.outcome,ev.effect)
+-- 4) AI unavailable -> dictionary best effort, unknown -> rejected
+ev=runEvent("сделай всех розовыми","Execute");local job3=W.thinking(s);W.resolve(s,job3.eventId,nil);print("4",ev.outcome,ev.effect)
+-- 5) roulette -> additions: author cannot add, Bob adds for himself, Carl's odd addition goes through the AI
+ev,author=runEvent("метеоры на врагов","Append",{["1"]="x",["2"]="и мне дай 50 лучников",["3"]="x2"})
+print("5 phase",ev.phase,ev.source,ev.outcome,(tostring(ev.effect):gsub("\n"," / ")))
+-- 6) hashtags: everyone sees the filtered text, the command uses what was typed
+ev=runEvent("дай мне 100 золота","Execute",nil,function(t) return (t:gsub("%d","#")) end)
+print("6 shown:",ev.prompt,"| typed:",ev.rawPrompt,"|",ev.effect)
+-- 7) timeout: no answer from the AI within 9 s -> built-in dictionary
+ev=runEvent("метеоры на врагов пожалуйста братан","Execute");print("7 phase",ev.phase);W.thinking(s);step(95);print("  ",ev.phase,ev.source,ev.effect)

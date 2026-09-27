@@ -231,7 +231,7 @@ local highlighted=Instance.new("Highlight")
 highlighted.Name="RoundSelection";highlighted.FillTransparency=0.92;highlighted.OutlineTransparency=0.1
 highlighted.Enabled=false;highlighted.Parent=Workspace
 tell=function(text) if actionPanel.Visible then panelInfo.Text=text end end
-local function blockedInput() return not windowFocused or transition:isActive() or adminUI:isBlocking() or UIS:GetFocusedTextBox()~=nil or GuiService.MenuIsOpen==true end
+local function blockedInput() return not windowFocused or transition:isActive() or adminUI:isBlocking() or UIS:GetFocusedTextBox()~=nil or GuiService.MenuIsOpen==true or (state~=nil and (tonumber(state.locked) or 0)>0) end
 send=function(op,payload)
     if active and token then command:FireServer(token,op,payload or {}) end
 end
