@@ -91,10 +91,9 @@ function Shop.new(parent,remote,catalog)
     local rbadge=make('Frame',holder,'Robux',{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromOffset(74,8),Size=UDim2.fromOffset(28,28),ZIndex=15,BackgroundColor3=C.Green,BorderSizePixel=0})
     round(rbadge);stroke(rbadge,C.Ink,2);label(rbadge,'R','R$',12,C.White,{Size=UDim2.fromScale(1,1),ZIndex=17})
     -- promo codes button right under the shop button
-    local codes=make('TextButton',holder,'Codes',{Text='',AutoButtonColor=false,AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,0,100),Size=UDim2.fromOffset(78,46),ZIndex=6})
+    local codes=make('TextButton',holder,'Codes',{Text='',AutoButtonColor=false,AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,0,100),Size=UDim2.fromOffset(78,36),ZIndex=6})
     Theme.skin(codes,C.Green)
-    label(codes,'Caption','CODES',17,C.White,{Position=UDim2.fromOffset(0,2),Size=UDim2.new(1,0,0,24),ZIndex=8})
-    label(codes,'Text','FREE TICKETS',9,C.Ink,{Position=UDim2.fromOffset(0,25),Size=UDim2.new(1,0,0,14),ZIndex=8})
+    label(codes,'Caption','CODES',17,C.White,{Size=UDim2.fromScale(1,1),ZIndex=8})
     self.codesButton=codes
     self.button=holder
     -- ------------------------------------------------------------ window

@@ -62,8 +62,9 @@ def spots(tiles, shop_pos, spawn):
     chest = (sx + left[0] * 17 + tsx * 2, sz + left[1] * 17 + tsz * 2)
     zone = (chest[0] + tsx * 4.2, chest[1] + tsz * 4.2)
     out = {'chest': chest, 'zone': zone, 'chest_face': (tsx, tsz)}
-    # 1: next to the spawn, facing it
-    out['code1'] = (spawn[0] + 11, spawn[1] + 10)
+    # 1: behind the middle 0/6 room square, readable only from behind it
+    out['code1'] = (64.0 + 13, 0.0 + 3)
+    out['code1_face'] = (1.0, 0.0)
     # 2: on the back wall of the shop
     out['code2'] = (sx - tsx * 12.5, sz - tsz * 12.5)
     out['code2_face'] = (-tsx, -tsz)
@@ -142,7 +143,7 @@ def build(scen, spots_, lift_at):
     # 1: signpost right at the spawn
     x, z = spots_['code1']
     y = TOP + lift_at(x, z) * 6.0
-    vx, vz = unit(-6 - x, 0 - z)
+    vx, vz = spots_['code1_face']
     S = at(x, y, z) * ry(face_yaw(vx, vz))
     s1 = model(codes, 'Code1')
     part(s1, 'Post', (0.6, 4.2, 0.6), S * at(0, 2.1, 0.2), WOOD_D, variant='Studs')
