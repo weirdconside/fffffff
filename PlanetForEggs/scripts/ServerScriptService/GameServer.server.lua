@@ -569,6 +569,29 @@ ctx.remotes.PlanetChunks.OnServerInvoke = function(player, planetId, seed, keys)
 end
 Players.PlayerRemoving:Connect(function(player) chunkCalls[player] = nil end)
 
+-- ---------------------------------------------------------------- (v41) offline income
+-- The pets kept earning while you were away (Config.OfflineIncome): their income now (with the passes you have) times
+-- the time since your last save, capped. Settled once per visit; until it is, the saves keep the old LastSeen (leaving
+-- within seconds of joining loses nothing).
+function ctx.payOffline(profile)
+	if profile.OfflineSettled then return end
+	local cfg = Config.OfflineIncome
+	local data = profile.Data
+	local last = data.LastSeen or 0
+	profile.OfflineSettled = true
+	if not cfg or last <= 0 or not profile.Persistent then data.LastSeen = os.time(); return end
+	local away = math.clamp(os.time() - last, 0, (cfg.MaxHours or 24) * 3600)
+	data.LastSeen = os.time()
+	if away < (cfg.MinSeconds or 60) then return end
+	local _, income = ctx.petList(profile)
+	local earned = math.floor(income * away * (cfg.Share or 1))
+	if earned <= 0 then return end
+	data.Coins = math.min(1e15, data.Coins + earned)
+	ctx.effect(profile.Player, "OfflineIncome", {Coins = earned, Seconds = away, Income = income, Capped = os.time() - last > (cfg.MaxHours or 24) * 3600})
+	ctx.effect(profile.Player, "Coins", {Amount = earned})
+	ctx.markDirty(profile)
+end
+
 -- ---------------------------------------------------------------- players
 local function loadCharacter(profile)
 	if closing or profiles[profile.Player] ~= profile or not profile.Player.Parent or profile.Spawning then return end
@@ -649,6 +672,8 @@ local function playerAdded(player)
 		if profiles[player] ~= profile then return end
 		pcall(Rewards.Daily, profile)
 		pcall(Rewards.OnJoin, profile)
+		local ok, err = pcall(ctx.payOffline, profile)
+		if not ok then warn("[PFE] offline income failed", err); profile.OfflineSettled = true end
 	end)
 	task.delay(4, function()
 		if profiles[player] == profile then

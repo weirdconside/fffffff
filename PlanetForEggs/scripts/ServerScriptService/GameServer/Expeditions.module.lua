@@ -85,8 +85,30 @@ end
 -- everyone exploring it sees and races for. Picking one up puts it in your hands; carry it to your
 -- rocket. Anyone who hits you with the bat takes it out of your hands (and so on, round and round);
 -- if they have no room it drops on the ground for whoever is fastest. Dying drops it too.
-local pools = {}       -- planetId -> {Planet, Folder, Seed, UsedSpots, Generation}
+local pools = {}       -- planetId -> {Planet, Folder, Seed, UsedSpots, Generation, Counts, Total, Islands}
 local pickupEggs = setmetatable({}, {__mode = "k"}) -- pickup model -> its egg (events upgrade them)
+
+-- (v41) no eggs on or around the landing pad: a hiding spot closer than Config.NearEggs.RocketClear to the planet's
+-- centre (where the rocket stands) is never used
+local function nearRocket(origin, position)
+	local clear = Config.NearEggs.RocketClear or 0
+	local dx, dz = position.X - origin.X, position.Z - origin.Z
+	return dx * dx + dz * dz < clear * clear
+end
+-- (v41) the ground eggs on hiding spots, counted as they come and go (the pool used to be scanned five times for
+-- every egg it laid - hundreds of thousands of attribute reads whenever somebody landed or the maps reset)
+local function countIn(pool, item, zone)
+	item:SetAttribute("Counted", true)
+	pool.Counts[zone or 0] = (pool.Counts[zone or 0] or 0) + 1
+	pool.Total += 1
+end
+local function uncount(pool, item)
+	if not pool or not item:GetAttribute("Counted") then return end
+	item:SetAttribute("Counted", nil)
+	local zone = item:GetAttribute("Zone") or 0
+	pool.Counts[zone] = math.max(0, (pool.Counts[zone] or 0) - 1)
+	pool.Total = math.max(0, pool.Total - 1)
+end
 
 local function explorers(planetId)
 	local list = {}
@@ -154,21 +176,20 @@ Expeditions.RollSize = rollSize
 local function freeSpot(pool, layout, zone)
 	local list = zone and layout.SpotsByZone and layout.SpotsByZone[zone] or layout.Spots
 	if not list or #list == 0 then list = layout.Spots end
+	if not list or #list == 0 then return nil end
+	local origin = layout.Origin
 	for _ = 1, 40 do
 		local spot = list[rng:NextInteger(1, #list)]
-		if spot and not pool.UsedSpots[spot.Id] then return spot end
+		if spot and not pool.UsedSpots[spot.Id] and not nearRocket(origin, spot.Position) then return spot end
 	end
 	for _, spot in ipairs(list) do
-		if not pool.UsedSpots[spot.Id] then return spot end
+		if not pool.UsedSpots[spot.Id] and not nearRocket(origin, spot.Position) then return spot end
 	end
 	return nil
 end
 local function groundCount(pool, zone)
-	local n = 0
-	for _, item in ipairs(pool.Folder:GetChildren()) do
-		if item:GetAttribute("SpotId") and not item:GetAttribute("Near") and (zone == nil or item:GetAttribute("Zone") == zone) then n += 1 end
-	end
-	return n
+	if zone == nil then return pool.Total end
+	return pool.Counts[zone] or 0
 end
 local function targetCount(pool)
 	return math.min(Config.EggsMaxPerPlanet or 330, Config.EggsPerExpedition + math.max(0, #explorers(pool.Planet) - 1) * Config.EggsPerExtraExplorer)
@@ -234,8 +255,12 @@ local function makePickup(pool, name, point, egg, info, opts)
 	end
 	item:SetAttribute("EggId", info.Id); item:SetAttribute("Rarity", info.Rarity); item:SetAttribute("Mutation", egg.Mutation)
 	for key, value in pairs(opts or {}) do item:SetAttribute(key, value) end
-	local title = Config.EggDisplayName(egg)
-	ctx.label(item, title, "Hold E to pick up", Config.Rarities[info.Rarity].Color, labelHeight).MaxDistance = 28 + labelHeight
+	-- (v41) the Golden Egg of the race (PlanetLife) stays the Golden Egg wherever it lies: picked up, knocked away, dropped
+	if egg.GoldenRace then item:SetAttribute("GoldenRace", true); item:SetAttribute("Keep", true) end
+	local title = egg.GoldenRace and "THE GOLDEN EGG" or Config.EggDisplayName(egg)
+	local label = ctx.label(item, title, egg.GoldenRace and "Grab it and get it to your rocket!" or "Hold E to pick up",
+		egg.GoldenRace and Color3.fromRGB(255, 214, 60) or Config.Rarities[info.Rarity].Color, labelHeight)
+	if label then label.MaxDistance = egg.GoldenRace and 400 or 28 + labelHeight end
 	local prompt = ctx.makePrompt(proxy, "CollectPickup", "Pick up", nil,
 		{Hold = 0.3, Distance = item:GetAttribute("IslandId") and 16 or 10, ObjectText = title})
 	pickupEggs[item] = egg
@@ -246,8 +271,9 @@ end
 local function giveCarry(profile, egg, announce)
 	local expedition = profile.Expedition
 	expedition.CarryingEgg = {Id = egg.Id or Data.Guid(), EggId = egg.EggId, Scale = egg.Scale, Mutation = egg.Mutation,
-		FastGrow = egg.FastGrow or ctx.eventActive("Aurora") or nil}
+		FastGrow = egg.FastGrow or ctx.eventActive("Aurora") or nil, GoldenRace = egg.GoldenRace}
 	Expeditions.ShowCarry(profile, expedition.CarryingEgg)
+	if egg.GoldenRace and ctx.GoldenEggTaken then task.spawn(ctx.GoldenEggTaken, profile) end
 	profile.Data.DiscoveredEggs[egg.EggId] = true
 	profile.Data.TutorialStep = math.max(profile.Data.TutorialStep, 4)
 	if announce then
@@ -291,6 +317,7 @@ local function onPickup(pool, item, respawn, proxy)
 		if full then ctx.notice(profile, full, "Red"); ctx.effect(player, "PickupBlocked", {Reason = full}); return end
 		pickupEggs[item] = nil
 		local dropped = item:GetAttribute("Dropped") == true
+		uncount(pool, item)
 		item:Destroy()
 		giveCarry(profile, egg, not dropped)
 		if respawn then
@@ -317,6 +344,7 @@ spawnSpot = function(pool, bonus)
 		pool.UsedSpots[spot.Id] = nil
 		if not bonus then spawnSpot(pool) end
 	end, proxy))
+	if not bonus then countIn(pool, item, spot.Zone) end
 	item.Parent = pool.Folder
 	return item
 end
@@ -334,6 +362,7 @@ spawnIslandEgg = function(pool, island)
 		if rng:NextNumber() < band.Chance then spawnIslandEgg(pool, island) end
 	end, proxy))
 	item.Parent = pool.Folder
+	pool.Islands[item] = proxy   -- (the server moves its prompt part along with the island, see Init)
 	return item
 end
 
@@ -349,6 +378,7 @@ end
 
 local function fillPool(pool)
 	pool.UsedSpots = {}
+	pool.Counts, pool.Total = {}, 0
 	pool.Generation += 1
 	-- (v36) a few dozen at once, the rest a batch per frame: hundreds of eggs (models, labels, prompts) built in one
 	-- frame made the server hitch whenever someone landed or the maps reset
@@ -379,9 +409,11 @@ local function ensurePool(planetId)
 	folder.Name = planetId
 	folder:SetAttribute("Planet", planetId)
 	folder.Parent = ctx.pickups
-	pool = {Planet = planetId, Folder = folder, Seed = ctx.mapSeed(), UsedSpots = {}, Generation = 0}
+	pool = {Planet = planetId, Folder = folder, Seed = ctx.mapSeed(), UsedSpots = {}, Generation = 0, Counts = {}, Total = 0,
+		Islands = setmetatable({}, {__mode = "k"})}
 	pools[planetId] = pool
 	fillPool(pool)
+	if ctx.OnPoolReady then task.spawn(ctx.OnPoolReady, planetId) end
 	return pool
 end
 -- nobody left on the planet: its eggs go away a little later (a quick return finds them still there)
@@ -437,6 +469,12 @@ function Expeditions.BotSnatch(victim, botName)
 	local expedition = victim.Expedition
 	local egg = expedition and expedition.CarryingEgg
 	if not egg then return nil end
+	if egg.GoldenRace then
+		-- (v41) the bots never run off with the Golden Egg: it falls to the ground for the players to fight over
+		dropCarry(victim)
+		ctx.notice(victim, tostring(botName) .. " knocked the Golden Egg out of your hands!", "Red")
+		return nil
+	end
 	expedition.CarryingEgg = nil
 	Expeditions.ClearCarry(victim)
 	ctx.notice(victim, tostring(botName) .. " knocked your egg away!", "Red")
@@ -479,6 +517,7 @@ function Expeditions.BotTake(item)
 	local spot = item:GetAttribute("SpotId")
 	if spot then pool.UsedSpots[spot] = nil end
 	local near = item:GetAttribute("Near")
+	uncount(pool, item)
 	item:Destroy()
 	local generation = pool.Generation
 	if not near then
@@ -494,6 +533,7 @@ function Expeditions.BotPickup(profile, item)
 	local root = ctx.root(profile.Player)
 	local proxy = item and item:FindFirstChild("Pickup")
 	if not expedition or not root or not proxy or not item.Parent or roomFor(profile) then return false end
+	if item:GetAttribute("GoldenRace") then return false end -- (v41) the Golden Egg is the players' race
 	local pool = pools[item:GetAttribute("Planet") or ""]
 	if pool and (root.Position - pickupPoint(pool, item, proxy)).Magnitude > Config.PickupDistance * (Config.PromptReach or 1) + 4 then return false end
 	local dropped = item:GetAttribute("Dropped") == true
@@ -526,6 +566,7 @@ function Expeditions.RemovePickup(item)
 	local pool = pools[item:GetAttribute("Planet") or ""]
 	local spot = item:GetAttribute("PumpkinSpot")
 	if pool and spot then pool.UsedSpots[spot] = nil end
+	uncount(pool, item)
 	item:Destroy()
 end
 -- a meteor (or golden light) upgrades an egg lying on a planet: next mutation tier, or `to`
@@ -569,13 +610,9 @@ end
 -- first, else a bare patch of ground - the planets are flat), and clear the extras nobody is near any more
 local GRID = 100
 local spotGrids = setmetatable({}, {__mode = "k"})
-local function spawnNear(pool, position)
-	local cfg = Config.NearEggs
-	local layout = ctx.PlanetGen.Generate(pool.Planet, pool.Seed)
-	if not layout or pools[pool.Planet] ~= pool then return nil end
-	local here = Vector2.new(position.X, position.Z)
-	local candidates = {}
-	-- (v30) only the hiding spots in the grid cells round the explorer (a 5x planet has thousands of spots)
+-- (v30) only the hiding spots in the grid cells round a point (a 5x planet has thousands of spots); (v41) shared by
+-- everything that lays an egg near somebody, never on the landing pad
+local function spotsAround(pool, layout, position, minD, maxD)
 	local grid = spotGrids[layout]
 	if not grid then
 		grid = {}
@@ -587,16 +624,27 @@ local function spawnNear(pool, position)
 		end
 		spotGrids[layout] = grid
 	end
+	local here = Vector2.new(position.X, position.Z)
+	local list = {}
 	local cx, cz = math.floor(position.X / GRID), math.floor(position.Z / GRID)
-	local reach = math.ceil(cfg.Radius / GRID)
+	local reach = math.ceil(maxD / GRID)
 	for gx = cx - reach, cx + reach do
 		for gz = cz - reach, cz + reach do
 			for _, spot in ipairs(grid[gx .. ":" .. gz] or {}) do
 				local d = (Vector2.new(spot.Position.X, spot.Position.Z) - here).Magnitude
-				if d > cfg.Inner and d < cfg.Radius and not pool.UsedSpots[spot.Id] then table.insert(candidates, spot) end
+				if d > minD and d < maxD and not pool.UsedSpots[spot.Id] and not nearRocket(layout.Origin, spot.Position) then
+					table.insert(list, spot)
+				end
 			end
 		end
 	end
+	return list
+end
+local function spawnNear(pool, position)
+	local cfg = Config.NearEggs
+	local layout = ctx.PlanetGen.Generate(pool.Planet, pool.Seed)
+	if not layout or pools[pool.Planet] ~= pool then return nil end
+	local candidates = spotsAround(pool, layout, position, cfg.Inner, cfg.Radius)
 	local spot = candidates[rng:NextInteger(1, math.max(1, #candidates))]
 	local point, zone, key
 	if spot then
@@ -608,7 +656,7 @@ local function spawnNear(pool, position)
 			local angle, dist = rng:NextNumber(0, math.pi * 2), rng:NextNumber(cfg.Inner + 8, cfg.Radius - 10)
 			local flat = Vector3.new(position.X - origin.X + math.cos(angle) * dist, 0, position.Z - origin.Z + math.sin(angle) * dist)
 			local fromCenter = flat.Magnitude
-			if fromCenter > 60 and fromCenter < layout.Radius - 8 then
+			if fromCenter > math.max(60, cfg.RocketClear or 0) and fromCenter < layout.Radius - 8 then
 				point, zone = origin + flat, ctx.PlanetGen.ZoneOf(fromCenter, layout.Radius)
 				break
 			end
@@ -630,7 +678,10 @@ local function topUpNear(profile)
 	local expedition = profile.Expedition
 	local pool = expedition and pools[expedition.Planet]
 	local root = ctx.root(profile.Player)
-	if not pool or not root or profile.Busy or expedition.Planet ~= profile.Planet then return end
+	if not pool or not root or profile.Busy or expedition.Planet ~= profile.Planet or profile.InCave then return end
+	-- (v41) by the rocket nothing is topped up: the explorers have to go out for their eggs
+	local planet = Config.Planets[pool.Planet]
+	if planet and nearRocket(planet.Origin, root.Position) then return end
 	local here = Vector2.new(root.Position.X, root.Position.Z)
 	local near, extras = 0, 0
 	for _, item in ipairs(pool.Folder:GetChildren()) do
@@ -711,13 +762,8 @@ function Expeditions.SpawnPumpkinEgg(planetId, near)
 	if not pool or not near then return nil end
 	local layout = ctx.PlanetGen.Generate(pool.Planet, pool.Seed)
 	if not layout then return nil end
-	-- the free hiding spots 18-110 studs away (a random one of them)
-	local near2 = Vector2.new(near.X, near.Z)
-	local candidates = {}
-	for _, spot in ipairs(layout.Spots) do
-		local d = (Vector2.new(spot.Position.X, spot.Position.Z) - near2).Magnitude
-		if d > 18 and d < 110 and not pool.UsedSpots[spot.Id] then table.insert(candidates, spot) end
-	end
+	-- the free hiding spots 18-110 studs away (a random one of them; v41: from the grid cells round you, not the whole map)
+	local candidates = spotsAround(pool, layout, near, 18, 110)
 	local best = candidates[rng:NextInteger(1, math.max(1, #candidates))]
 	if not best then return nil end
 	pool.UsedSpots[best.Id] = true
@@ -734,6 +780,64 @@ function Expeditions.SpawnPumpkinEgg(planetId, near)
 	prompt.Triggered:Connect(onPickup(pool, item, function() pool.UsedSpots[best.Id] = nil end, proxy))
 	item.Parent = pool.Folder
 	return item
+end
+
+-- ---------------------------------------------------------------- (v41) eggs made by the weather, the bosses, caves...
+-- An egg lying at `position` on `planetId` (any point: a crater, a cave, where a crystal broke), rolled for that planet
+-- with opts: Zone (distance ring 1-5 for the odds, default 3), Boost (rare boost, like the sky islands), Super (chance of
+-- the chase egg), MinMutation ("Golden"...: at least that), MutationStep (n tiers up), Life (seconds before it fades),
+-- Name / Tag (attributes). Returns the pickup (nil when nobody explores that planet: no pool).
+function Expeditions.HasPool(planetId) return pools[planetId] ~= nil end
+function Expeditions.SpawnEventEgg(planetId, position, opts)
+	local pool = pools[planetId]
+	if not pool or typeof(position) ~= "Vector3" then return nil end
+	opts = opts or {}
+	local info = opts.EggId and Config.Eggs[opts.EggId] or rollEgg(nil, pool.Planet, opts.Zone or 3, opts.Boost, opts.Super)
+	if not info then return nil end
+	local mutation = rollMutation(nil, pool.Planet)
+	local order = {}
+	for i, m in ipairs(Config.MutationList) do order[m.Id] = i end
+	local tier = order[mutation] or 1
+	if opts.MutationStep then tier = math.min(#Config.MutationList, tier + opts.MutationStep) end
+	if opts.MinMutation and order[opts.MinMutation] then tier = math.max(tier, order[opts.MinMutation]) end
+	local egg = {EggId = info.Id, Scale = opts.Scale or rollSize(), Mutation = Config.MutationList[tier].Id, GoldenRace = opts.GoldenRace}
+	local attributes = {Bonus = true, Zone = opts.Zone or 3}
+	if opts.Tag then attributes.EventTag = opts.Tag end
+	if opts.Keep then attributes.Keep = true end
+	local item, proxy, prompt = makePickup(pool, opts.Name or ("EventEgg_" .. rng:NextInteger(1, 1e9)), position, egg, info, attributes)
+	prompt.Triggered:Connect(onPickup(pool, item, nil, proxy))
+	item.Parent = pool.Folder
+	if opts.Life then
+		local generation = pool.Generation
+		task.delay(opts.Life, function()
+			if item.Parent and pickupEggs[item] and pools[planetId] == pool and pool.Generation == generation then
+				for _, other in pairs(ctx.profiles) do
+					if other.Planet == planetId then ctx.effect(other.Player, "EventStrike", {Kind = "Vanish", Position = proxy.Position, Delay = 0}) end
+				end
+				pickupEggs[item] = nil
+				item:Destroy()
+			end
+		end)
+	end
+	return item
+end
+-- the race's Golden Egg (PlanetLife): `egg` is the record ({EggId, Scale, Mutation, GoldenRace = true}) lying at `position`
+function Expeditions.SpawnGoldenEgg(planetId, position, egg)
+	local pool = pools[planetId]
+	local info = egg and Config.Eggs[egg.EggId]
+	if not pool or not info then return nil end
+	local item, proxy, prompt = makePickup(pool, "GoldenEgg", position, egg, info, {Bonus = true, Zone = 5})
+	prompt.HoldDuration = 0.5
+	prompt.Triggered:Connect(onPickup(pool, item, nil, proxy))
+	item.Parent = pool.Folder
+	return item
+end
+-- (the Golden Egg leaves a planet everybody left: it waits for the next explorer, out of the pool)
+function Expeditions.TakeOutPickup(item)
+	local egg = pickupEggs[item]
+	pickupEggs[item] = nil
+	if item.Parent then item:Destroy() end
+	return egg
 end
 
 -- ---------------------------------------------------------------- platform & expedition end
@@ -758,11 +862,16 @@ local function loadCarriedEgg(profile)
 	local expedition = profile.Expedition
 	if not expedition or not expedition.CarryingEgg or profile.Busy or not onRocketPlatform(profile) then return false end
 	if #expedition.Eggs >= ctx.capacity(profile) then return false end
-	table.insert(expedition.Eggs, expedition.CarryingEgg)
+	local loaded = expedition.CarryingEgg
+	table.insert(expedition.Eggs, loaded)
 	expedition.CarryingEgg = nil
 	Expeditions.ClearCarry(profile)
 	profile.Data.TutorialStep = math.max(profile.Data.TutorialStep, 5)
 	ctx.notice(profile, "Egg loaded " .. #expedition.Eggs .. "/" .. ctx.capacity(profile), "Green")
+	if loaded.GoldenRace then
+		loaded.GoldenRace = nil   -- (it is an ordinary egg of this rocket from now on)
+		if ctx.GoldenEggSecured then task.spawn(ctx.GoldenEggSecured, profile, loaded) end
+	end
 	ctx.effect(profile.Player, "EggLoaded", {})
 	ctx.markDirty(profile)
 	return true
@@ -855,7 +964,8 @@ function Expeditions.ResetPools()
 	for planetId, pool in pairs(pools) do
 		pool.Seed = ctx.mapSeed()
 		for _, item in ipairs(pool.Folder:GetChildren()) do
-			if not item:GetAttribute("Dropped") then pickupEggs[item] = nil; item:Destroy() end
+			-- (v41: Keep - the Golden Egg of the race - stays where it is too)
+			if not item:GetAttribute("Dropped") and not item:GetAttribute("Keep") then pickupEggs[item] = nil; item:Destroy() end
 		end
 		fillPool(pool)
 		for _, profile in ipairs(explorers(planetId)) do
@@ -1001,7 +1111,8 @@ function Expeditions.Tick(profile, dt)
 	end
 	if profile.God or ctx.immortal(profile) then return end -- (;god / immortality: no air used)
 	local planet = Config.Planets[expedition.Planet]
-	local rate = planet.OxygenMultiplier
+	-- (v41) the weather (a blizzard far from a campfire, a heatwave in the sun...) and the caves change how fast it goes
+	local rate = planet.OxygenMultiplier * (ctx.AirMultiplier and ctx.AirMultiplier(profile) or 1)
 	profile.Oxygen = math.max(0, profile.Oxygen - rate * dt)
 	local maxOxygen = ctx.maxOxygen(profile)
 	if profile.Oxygen <= maxOxygen * 0.12 and profile.Data.OxygenTanks > 0 then Expeditions.UseOxygenTank(profile) end
@@ -1094,13 +1205,15 @@ function Expeditions.Init(context)
 	-- eggs on the floating islands: the server moves their prompt part along with the island too. Roblox
 	-- checks a prompt's distance on the server, so a part left where the egg spawned (while the island
 	-- drifted on, up to ~140 studs) made those eggs impossible to pick up.
+	-- (v41: only the island eggs are walked - the pool keeps a list of them - not every egg on the planet ten times a second)
 	task.spawn(function()
 		while true do
 			task.wait(0.1)
 			for _, pool in pairs(pools) do
-				for _, item in ipairs(pool.Folder:GetChildren()) do
-					local proxy = item:GetAttribute("IslandId") and item:FindFirstChild("Pickup")
-					if proxy then
+				for item, proxy in pairs(pool.Islands) do
+					if not item.Parent or not proxy.Parent then
+						pool.Islands[item] = nil
+					else
 						local ok, point = pcall(pickupPoint, pool, item, proxy)
 						if ok and point then proxy.CFrame = CFrame.new(point) end
 					end

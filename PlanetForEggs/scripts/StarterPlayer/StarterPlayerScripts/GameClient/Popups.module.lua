@@ -192,10 +192,39 @@ function Popups.Init(store)
 		sound("action_get_up.mp3", 0.35, 2)
 	end
 
+	-- ---------------------------------------------------------------- (v41) the pets' earnings while you were away
+	local function welcomeBack(payload)
+		local amount = tonumber(payload.Coins) or 0
+		if amount <= 0 then return end
+		local card = rewardCard(C.Gold, 150)
+		local head = UI.text(card, "WELCOME BACK!", UDim2.fromOffset(520, 46), UDim2.fromOffset(0, 0), 42, C.Gold)
+		head.TextXAlignment = Enum.TextXAlignment.Center; head.ZIndex = 47; head.TextWrapped = false
+		local seconds = math.floor(tonumber(payload.Seconds) or 0)
+		local away = seconds >= 3600 and string.format("%dh %02dm", seconds // 3600, (seconds % 3600) // 60) or string.format("%dm", math.max(1, seconds // 60))
+		local sub = UI.text(card, "Your pets kept farming for " .. away .. (payload.Capped and " (max)" or ""), UDim2.fromOffset(520, 28),
+			UDim2.fromOffset(0, 48), 22, C.Soft)
+		sub.TextXAlignment = Enum.TextXAlignment.Center; sub.ZIndex = 47
+		local row = UI.new("Frame", {BackgroundTransparency = 1, Size = UDim2.fromOffset(520, 56), Position = UDim2.fromOffset(0, 82), ZIndex = 46}, card)
+		UI.list(row, 10, true, Enum.HorizontalAlignment.Center).VerticalAlignment = Enum.VerticalAlignment.Center
+		UI.icon(row, "CashStack", UDim2.fromOffset(52, 52), nil, {ZIndex = 47, LayoutOrder = 1})
+		local value = UI.text(row, "+" .. Config.Format(amount), UDim2.fromOffset(260, 52), nil, 44, Color3.fromRGB(255, 226, 90))
+		value.ZIndex = 47; value.TextWrapped = false; value.LayoutOrder = 2; value.AutomaticSize = Enum.AutomaticSize.X
+		Popups.Play(Config.Sounds.Cash, 0.6, 1)
+		Popups.Play(Config.Sounds.Reward, 0.5, 1)
+		dismiss(card, 6)
+	end
+
 	api:WaitForChild("Effect").OnClientEvent:Connect(function(kind, payload)
 		payload = type(payload) == "table" and payload or {}
 		if (kind == "CodeResult" or kind == "FreeResult" or kind == "DailyClaimed") and store.Menus and store.Menus.OnEffect then store.Menus.OnEffect(kind, payload) end
-		if kind == "EggFound" then eggFound(payload)
+		if kind == "OfflineIncome" then
+			-- (the join cutscene owns the screen first)
+			task.spawn(function()
+				local deadline = os.clock() + 90
+				while (player:GetAttribute("PFECutscene") == true or player:GetAttribute("IntroActive") == true) and os.clock() < deadline do task.wait(0.5) end
+				welcomeBack(payload)
+			end)
+		elseif kind == "EggFound" then eggFound(payload)
 		elseif kind == "Coins" then coins(payload.Amount or 0)
 		elseif kind == "Alarm" then flashAlarm()
 		elseif kind == "StealSuccess" then sound("impact_water.mp3", 0.5, 1.2)

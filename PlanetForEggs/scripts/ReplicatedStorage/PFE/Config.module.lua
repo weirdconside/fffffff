@@ -64,7 +64,9 @@ Config.EggsPerExtraExplorer = 24
 Config.EggsMaxPerPlanet = 330
 -- (v30) eggs follow the explorer: there are always at least Min eggs within Radius studs of everyone on a planet
 -- (topped up every Every seconds from the free hiding spots around them; the extras far from everybody go away)
-Config.NearEggs = {Min = 8, Radius = 150, Inner = 22, Every = 1, PerTick = 4, Cleanup = 420, MaxPerExplorer = 40}
+-- (v41) RocketClear: no egg ever lies within this many studs of the landing pad (the pad used to be ringed with eggs -
+-- you landed, grabbed one and flew home); fewer near-eggs, topped up more slowly
+Config.NearEggs = {Min = 5, Radius = 150, Inner = 30, Every = 1, PerTick = 2, Cleanup = 420, MaxPerExplorer = 30, RocketClear = 170}
 -- (v29) bot explorers fill the bases nobody uses (Bots.lua); a real player always gets a base (a bot leaves)
 -- (v35) they play like people: they steal from pens (players' too: StealFromPlayers, at most once per PlayerStealCooldown
 -- seconds from the same player, never from a shielded or a newcomer's pen), grow and hatch what they steal, defend
@@ -82,7 +84,7 @@ Config.Bots = {Enabled = true, Capacity = 9, Max = 8, JoinDelay = {2, 7},
 		"frbdct_3546hgg", "Boy09N_2", "Makaka0_0ao", "love_mez10", "Sasha_star313", "heibeibidontstar1", "PNCYH101", "Emilkazai4",
 		"bsgcxneuxnsjgj", "PATRIK_BOOST", "mny52436", "sicm588", "KOTARA_404228", "Miss_roblox1347", "kokle766", "Nastenkas5669", "kura9083"}}
 Config.MapCycle = 300             -- every 5 minutes every planet is rebuilt from a new seed
-Config.EventInterval = {200, 320} -- seconds between world events
+Config.EventInterval = {300, 300} -- (v41) a world event starts every 5 minutes (counted from the start of the last one)
 
 -- Floating sky islands above every planet: height bands pick the egg odds (higher = better)
 Config.SkyIslands = {Count = 20, Bands = {
@@ -141,6 +143,9 @@ Config.Codes = {
 }
 -- the Free button: like + favourite the game (checked again after a rejoin) -> VIP for a while
 Config.FreeReward = {Pass = "VIP", Seconds = 24 * 3600, RecheckSeconds = 30}
+-- (v41) passive income like Steal an Egg: while you are away your pets keep earning (Share of their income per second,
+-- for at most MaxHours; less than MinSeconds away pays nothing). Paid when you come back, with a "welcome back" card.
+Config.OfflineIncome = {Share = 1, MaxHours = 24, MinSeconds = 60}
 -- the VIP's perks: +10% coins from pets, +10% air, a random pass for an hour every day
 Config.VipIncome = 1.1
 Config.VipOxygen = 1.1
@@ -208,7 +213,7 @@ Config.EggRespawn = {45, 90}
 -- pool in each ring, and the outer rings are far bigger, so out there an egg is a long run from the next one.
 -- Getting to the edge (and back to the rocket with the egg in your hands) is what trained Speed is for.
 Config.ZoneEdges = {0.25, 0.45, 0.65, 0.83}     -- ring edges as a share of the planet's radius
-Config.ZoneShare = {0.17, 0.22, 0.22, 0.21, 0.18}
+Config.ZoneShare = {0.10, 0.22, 0.24, 0.24, 0.20}   -- (v41: the ring round the landing pad has fewer eggs)
 -- multiplier per egg Tier (1 = the planet's commonest egg .. 7 = its chase egg) in each ring
 Config.ZoneTierWeights = {
 	[1] = {1.6, 0.9, 0.3, 0.08, 0.02, 0.004, 0.001},
@@ -656,9 +661,15 @@ function Config.PetInfo(record)
 	return Config.Pets[record.Species]
 end
 
+-- (v41) air: every explorer starts with exactly AirBase seconds of it (the first helmet), and a helmet upgrade adds only
+-- AirUpgradeShare of what it used to on top of that (the old ladder ran to 2000 s - nobody ever ran out of air)
+Config.AirBase = 80
+Config.AirUpgradeShare = 0.5
 Config.Suits = {}
-for _, s in ipairs(ContentData.Suits) do
-	table.insert(Config.Suits, {Name = s.Name, Oxygen = s.Oxygen, Cost = s.Cost, Primary = rgb(s.Primary),
+for i, s in ipairs(ContentData.Suits) do
+	local first = ContentData.Suits[1].Oxygen
+	local oxygen = i == 1 and Config.AirBase or Config.AirBase + math.floor((s.Oxygen - first) * Config.AirUpgradeShare / 5 + 0.5) * 5
+	table.insert(Config.Suits, {Name = s.Name, Oxygen = oxygen, Cost = s.Cost, Primary = rgb(s.Primary),
 		Secondary = rgb(s.Secondary), Trim = rgb(s.Trim), Glow = rgb(s.Glow)})
 end
 Config.Rockets = ContentData.Rockets

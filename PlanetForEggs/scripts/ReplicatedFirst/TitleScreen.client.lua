@@ -66,16 +66,19 @@ make("UIGradient",paper,"Tint",{Rotation=90,Color=ColorSequence.new({ColorSequen
 make("ImageLabel",paper,"Studs",{BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Image=STUD,ScaleType=Enum.ScaleType.Tile,TileSize=UDim2.fromOffset(56,56),ImageTransparency=.94,ZIndex=1})
 
 -- ---------------------------------------------------------------- (v29) Halloween: a crescent moon, jack-o'-lanterns in the corners, bats
+-- (v41) every piece of it is sized and placed by layoutDecor (below) from the screen size: on a phone the moon and the
+-- pumpkins shrink into the free corners and never run over the logo, the start button or the credits line
 local spooky=make("Frame",gui,"Halloween",{BackgroundTransparency=1,Size=UDim2.fromScale(1,1),ZIndex=2})
 local moon=make("Frame",spooky,"Moon",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.84,.17),Size=UDim2.fromOffset(150,150),BackgroundColor3=Color3.fromRGB(255,244,200),BorderSizePixel=0,ZIndex=2})
-make("UICorner",moon,"Round",{CornerRadius=UDim.new(1,0)});make("UIStroke",moon,"Line",{Color=INK,Thickness=3})
+make("UICorner",moon,"Round",{CornerRadius=UDim.new(1,0)})
+local moonLine=make("UIStroke",moon,"Line",{Color=INK,Thickness=3})
 local bite=make("Frame",moon,"Bite",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.72,.38),Size=UDim2.fromScale(.86,.86),BackgroundColor3=Color3.fromRGB(255,214,170),BorderSizePixel=0,ZIndex=3})
 make("UICorner",bite,"Round",{CornerRadius=UDim.new(1,0)})
-local function jack(pos,size,rot)
-    local p=make("Frame",spooky,"Pumpkin",{AnchorPoint=Vector2.new(.5,1),Position=pos,Size=UDim2.fromOffset(size,size*.78),Rotation=rot,BackgroundColor3=Color3.fromRGB(255,140,30),BorderSizePixel=0,ZIndex=4})
+local function jack(size,rot)
+    local p=make("Frame",spooky,"Pumpkin",{AnchorPoint=Vector2.new(.5,1),Size=UDim2.fromOffset(size,size*.78),Rotation=rot,BackgroundColor3=Color3.fromRGB(255,140,30),BorderSizePixel=0,ZIndex=4})
     make("UICorner",p,"Round",{CornerRadius=UDim.new(.42,0)});make("UIStroke",p,"Line",{Color=INK,Thickness=4})
     for _,x in ipairs({.33,.67}) do
-        local rib=make("Frame",p,"Rib",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(x,.5),Size=UDim2.new(0,3,.9,0),BackgroundColor3=Color3.fromRGB(215,100,20),BorderSizePixel=0,ZIndex=5})
+        make("Frame",p,"Rib",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(x,.5),Size=UDim2.new(.04,0,.9,0),BackgroundColor3=Color3.fromRGB(215,100,20),BorderSizePixel=0,ZIndex=5})
     end
     for _,x in ipairs({.3,.7}) do
         make("Frame",p,"Eye",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(x,.38),Size=UDim2.fromScale(.16,.2),Rotation=45,BackgroundColor3=Color3.fromRGB(255,236,110),BorderSizePixel=0,ZIndex=6})
@@ -85,7 +88,10 @@ local function jack(pos,size,rot)
     make("UIStroke",stem,"Line",{Color=INK,Thickness=3})
     return p
 end
-local jacks={jack(UDim2.new(0,90,1,-10),150,-6),jack(UDim2.new(0,200,1,-6),96,8),jack(UDim2.new(1,-100,1,-8),140,5),jack(UDim2.new(1,-215,1,-4),84,-9)}
+-- the corner groups: a big pumpkin at the edge, a small one leaning on it (sizes are for a 1280x720 screen)
+local JACKS={{side=-1,size=150,rot=-6},{side=-1,size=96,rot=8,inner=true},{side=1,size=140,rot=5},{side=1,size=84,rot=-9,inner=true}}
+local jacks={}
+for i,spec in ipairs(JACKS) do jacks[i]=jack(spec.size,spec.rot) end
 local bats={}
 for i=1,12 do
     local b=make("Frame",spooky,"Bat",{AnchorPoint=Vector2.new(.5,.5),BackgroundTransparency=1,Size=UDim2.fromOffset(60,30),ZIndex=3})
@@ -102,7 +108,7 @@ for i=1,12 do
         table.insert(wings,{frame=w,side=side})
     end
     bats[i]={frame=b,wings=wings,speed=.035+math.random()*.05,phase=math.random()*6.28,y=.08+math.random()*.62,scale=.6+math.random()*.9,dir=(i%2==0) and 1 or -1,x=math.random()}
-    make("UIScale",b,"Size",{Scale=bats[i].scale})
+    bats[i].size=make("UIScale",b,"Size",{Scale=bats[i].scale})
 end
 local batClock=0
 local function animateBats(dt)
@@ -207,12 +213,83 @@ for i=1,9 do
     wipeRows[i]=row
 end
 
+-- (v41) the Halloween decor fitted to this screen: the moon in the top right corner, a pumpkin pair in each bottom
+-- corner. Each piece starts at its full size (scaled to the screen) and shrinks until it touches nothing that must stay
+-- readable - the logo, the start button and the credits line; a piece that can't fit even small is left out.
+local function hits(a,b) return a.x0<b.x1 and a.x1>b.x0 and a.y0<b.y1 and a.y1>b.y0 end
+local function hitsAny(r,list) for _,b in ipairs(list) do if hits(r,b) then return true end end return false end
+local function layoutDecor(v,s,ls)
+    local k=math.clamp(math.min(v.X/1280,v.Y/720),.36,1.25)
+    local touch=UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+    local margin=math.max(8,v.X*(touch and .045 or .015))   -- (phones: clear of the camera notch and the rounded corners)
+    local cx,cy=v.X*.5,v.Y*.44
+    local lw,lh=logo.width*s,TitleLogo.Height*s
+    local lowerTop=cy+141*s+16
+    local keep={
+        {x0=cx-lw*.5-6,x1=cx+lw*.5+6,y0=cy-lh*.5-6,y1=cy+lh*.5+6},                           -- the logo
+        {x0=cx-200*ls-8,x1=cx+200*ls+8,y0=lowerTop+5*ls-6,y1=lowerTop+55*ls+6},               -- the start button
+        {x0=cx-150,x1=cx+150,y0=v.Y-34,y1=v.Y-12},                                           -- the credits line
+    }
+    -- the moon: top right
+    local moonSize=150*k
+    while moonSize>=36 do
+        local x,y=v.X-margin-moonSize*.5,margin+moonSize*.5
+        if not hitsAny({x0=x-moonSize*.5,x1=x+moonSize*.5,y0=y-moonSize*.5,y1=y+moonSize*.5},keep) then break end
+        moonSize*=.9
+    end
+    moon.Visible=moonSize>=36
+    moon.Size=UDim2.fromOffset(moonSize,moonSize)
+    moon.Position=UDim2.fromOffset(v.X-margin-moonSize*.5,margin+moonSize*.5)
+    moonLine.Thickness=math.clamp(3*k,1.5,3)
+    -- the pumpkins: a big one in the corner, the small one leaning on it towards the middle
+    for _,side in ipairs({-1,1}) do
+        local outer,inner
+        for i,spec in ipairs(JACKS) do
+            if spec.side==side then if spec.inner then inner=i else outer=i end end
+        end
+        local function place(f,withInner)
+            local bigW=JACKS[outer].size*k*f
+            local bigX=side<0 and margin+bigW*.5 or v.X-margin-bigW*.5
+            local rects={{x0=bigX-bigW*.5,x1=bigX+bigW*.5,y0=v.Y-6-bigW*.78,y1=v.Y-6}}
+            local smallW,smallX=0,0
+            if withInner then
+                smallW=JACKS[inner].size*k*f
+                smallX=bigX-side*(bigW*.62+smallW*.25)
+                table.insert(rects,{x0=smallX-smallW*.5,x1=smallX+smallW*.5,y0=v.Y-4-smallW*.78,y1=v.Y-4})
+            end
+            for _,r in ipairs(rects) do if r.x0<0 or r.x1>v.X or hitsAny(r,keep) then return nil end end
+            return bigW,bigX,smallW,smallX
+        end
+        local bigW,bigX,smallW,smallX
+        local f=1
+        while f>=.3 and not bigW do bigW,bigX,smallW,smallX=place(f,true);f*=.9 end
+        local withInner=bigW~=nil
+        f=1
+        while f>=.3 and not bigW do bigW,bigX,smallW,smallX=place(f,false);f*=.9 end
+        local big,small=jacks[outer],jacks[inner]
+        big.Visible=bigW~=nil
+        small.Visible=withInner
+        if bigW then
+            big.Size=UDim2.fromOffset(bigW,bigW*.78);big.Position=UDim2.fromOffset(bigX,v.Y-6)
+            big.Line.Thickness=math.clamp(4*bigW/150,1.5,4)
+        end
+        if withInner then
+            small.Size=UDim2.fromOffset(smallW,smallW*.78);small.Position=UDim2.fromOffset(smallX,v.Y-4)
+            small.Line.Thickness=math.clamp(4*smallW/150,1.5,4)
+        end
+    end
+    -- the bats: the same size against the screen everywhere
+    for _,b in ipairs(bats) do b.size.Scale=b.scale*math.clamp(k*1.1,.45,1.2) end
+end
+
 local function fit()
     local v=viewport()
     layoutBars()
     local s=logo:fit(v,.86,.5,1)
     lower.Position=UDim2.new(.5,0,.44,141*s+16)
-    lowerScale.Scale=math.clamp(s*1.05,.62,1.1)
+    local ls=math.clamp(s*1.05,.62,1.1)
+    lowerScale.Scale=ls
+    layoutDecor(v,s,ls)
 end
 fit()
 

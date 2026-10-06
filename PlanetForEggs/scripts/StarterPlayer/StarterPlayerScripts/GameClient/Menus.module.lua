@@ -1009,8 +1009,11 @@ function Menus.Init(store)
 		-- suit
 		local suitLevel = state.SuitLevel or 1
 		local nextSuit = Config.Suits[suitLevel + 1]
+		-- (v41) the next helmet's air with the same pass / VIP bonus as now (it showed the bare number before)
+		local airNow = state.MaxOxygen or Config.Suits[suitLevel].Oxygen
+		local airBonus = airNow / math.max(1, Config.Suits[suitLevel].Oxygen)
 		local suitCard = upgradeCard(2, Color3.fromRGB(150, 90, 255), Config.Suits[suitLevel].Name .. " Helmet",
-			"Air " .. (state.MaxOxygen or Config.Suits[suitLevel].Oxygen) .. (nextSuit and ("  >  " .. nextSuit.Oxygen) or "  (max)"))
+			"Air " .. airNow .. (nextSuit and ("  >  " .. math.floor(nextSuit.Oxygen * airBonus)) or "  (max)"))
 		UI.icon(suitCard, "Helmet", UDim2.fromOffset(130, 130), UDim2.fromOffset(22, 22), {ZIndex = 6})
 		if nextSuit then
 			local ok = need(suitCard, 176, "Coin", state.Coins or 0, nextSuit.Cost, Config.Format(nextSuit.Cost))

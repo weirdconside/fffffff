@@ -48,7 +48,10 @@ function Data.Default()
 		SuitLevel = 1, RocketLevel = 1, CargoLevel = 1, JetpackLevel = 1, OxygenTanks = 0,
 		Eggs = {{Id = guid(), EggId = starter, Scale = 1, Mutation = "Normal"}}, GrowingEggs = {}, Pets = {},
 		TutorialStep = 1, DiscoveredEggs = {[starter] = true}, DiscoveredPets = {}, Purchases = {},
-		Stats = {EggsFound = 0, EggsHatched = 0, EggsStolen = 0, Expeditions = 0, EggsLost = 0, Fusions = 0},
+		-- (v41: AliensDefeated was counted but never kept - Normalize only keeps the keys listed here; the new ones too)
+		Stats = {EggsFound = 0, EggsHatched = 0, EggsStolen = 0, Expeditions = 0, EggsLost = 0, Fusions = 0, AliensDefeated = 0,
+			BossesDefeated = 0, GoldenEggs = 0, CrystalsBroken = 0, CavesExplored = 0},
+		LastSeen = 0,    -- (v41) unix time of the last save: the pets keep earning while you are away (Config.OfflineIncome)
 		LuckUntil = 0, ImmortalUntil = 0, VisitedPlanets = {}, SkipBank = 0,
 		TempPasses = {}, DungeonLoot = {},
 		Codes = {}, FreeStage = 0, FreeAskedAt = 0, VipDailyDay = 0,
@@ -117,6 +120,7 @@ function Data.Normalize(raw)
 	data.DailyDay = integer(raw.DailyDay, 0)
 	data.DailyStep = integer(raw.DailyStep, 0, 7)
 	data.DailyStreak = integer(raw.DailyStreak, 0, 100000)
+	data.LastSeen = integer(raw.LastSeen, 0, 1e12)
 	data.LuckUntil = integer(raw.LuckUntil, 0)
 	data.ImmortalUntil = integer(raw.ImmortalUntil, 0)
 	data.SkipBank = integer(raw.SkipBank, 0, 10000000)
@@ -278,6 +282,8 @@ function Data.Save(profile, release)
 	end
 	if profile.Saving or not profile.Persistent then return false end
 	profile.Saving = true
+	-- (v41) the moment of every save is when the offline earnings start counting if this is the last one
+	if profile.OfflineSettled then profile.Data.LastSeen = os.time() end
 	local snapshot = copy(profile.Data)
 	local writeId = guid()
 	local success, result
