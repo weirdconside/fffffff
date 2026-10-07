@@ -304,6 +304,9 @@ local based = #Bots.List()
 ok(based <= 9 - 9, based .. " based bots left (9 players)")
 ok(#Bots.Wanderers() == 4, "the 4 wanderers are still here")
 
+section("errors caught by pcall (Studio pauses on these)")
+for _, c in ipairs(R.CaughtSummary()) do print(("  %4dx  %s"):format(c.N, c.Key)) end
+
 section("summary")
 local real = {}
 for _, w in ipairs(R.Warnings) do

@@ -77,12 +77,21 @@ local function sightsList()
 	if sights then return sights end
 	sights = {}
 	local island = ctx.world and ctx.world:FindFirstChild("OriginalIsland")
+	-- (models and parts only: the folders hold more of them - a Folder has no pivot)
+	local function add(list)
+		for _, m in ipairs(list) do
+			if m:IsA("PVInstance") then
+				table.insert(sights, m:GetPivot().Position)
+			elseif m:IsA("Folder") then
+				for _, inner in ipairs(m:GetChildren()) do
+					if inner:IsA("PVInstance") then table.insert(sights, inner:GetPivot().Position) end
+				end
+			end
+		end
+	end
 	for _, folderName in ipairs({"Halloween", "EarthGreenery"}) do
 		local f = island and island:FindFirstChild(folderName)
-		for _, m in ipairs(f and f:GetChildren() or {}) do
-			local ok, cf = pcall(function() return m:GetPivot() end)
-			if ok and cf then table.insert(sights, cf.Position) end
-		end
+		if f then add(f:GetChildren()) end
 	end
 	return sights
 end

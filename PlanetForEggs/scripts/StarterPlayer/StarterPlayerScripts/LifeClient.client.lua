@@ -445,9 +445,12 @@ local loop = Instance.new("Sound")
 loop.Name = "PFE_WeatherLoop"; loop.Looped = true; loop.Volume = 0; loop.Parent = SoundService
 local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
 local fogSaved = nil           -- the planet's own atmosphere while the weather's fog is on
+local fogHoldUntil = 0
 local function fogOff(restore)
 	if fogSaved and restore and atmosphere then TweenService:Create(atmosphere, TweenInfo.new(1.5), fogSaved):Play() end
 	fogSaved = nil
+	-- (PlanetClient is tweening the atmosphere to the new place's preset for 1.2 s: what's there to keep comes after)
+	if not restore then fogHoldUntil = os.clock() + 1.4 end
 end
 -- the planet look changes under us (a ship, a cave, a flight, another planet): PlanetClient sets the atmosphere - forget ours
 for _, key in ipairs({"PFECave", "PFEDungeon", "PFEFlightActive", "PFESpectateWorld"}) do
@@ -514,7 +517,7 @@ RunService.RenderStepped:Connect(function(dt)
 	grade.TintColor = grade.TintColor:Lerp(currentLook and currentLook.Tint or Color3.new(1, 1, 1), math.min(1, dt * 1.5))
 	-- fog
 	if def and def.Fog and atmosphere then
-		if not fogSaved then
+		if not fogSaved and os.clock() >= fogHoldUntil then
 			fogSaved = {Density = atmosphere.Density, Color = atmosphere.Color, Haze = atmosphere.Haze, Offset = atmosphere.Offset}
 			TweenService:Create(atmosphere, TweenInfo.new(2), {Density = def.Fog.Density, Color = def.Fog.Color, Haze = 1.5, Offset = 0.15}):Play()
 		end
@@ -523,9 +526,10 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 	-- the quake shakes the camera
 	shakeOn = def ~= nil and def.Shake == true
-	-- weak gravity (and back to the planet's own)
+	-- weak gravity (and back to the planet's own) - the body's own planet only (an admin watching another world stays put)
+	local spectating = player:GetAttribute("PFESpectateWorld") ~= nil
 	local planet = planetId and Config.Planets[planetId]
-	if planet and def and def.Gravity then
+	if planet and def and def.Gravity and not spectating then
 		local want = Config.BaseGravity * planet.Gravity * def.Gravity
 		if math.abs(workspace.Gravity - want) > 0.5 then workspace.Gravity = want end
 		gravitySet = true
@@ -534,7 +538,7 @@ RunService.RenderStepped:Connect(function(dt)
 		if planet and not player:GetAttribute("PFESpectateWorld") then workspace.Gravity = Config.BaseGravity * planet.Gravity end
 	end
 	-- the wind pushes you about (not while sheltered)
-	if def and def.Wind and player:GetAttribute("PFESheltered") ~= true then
+	if def and def.Wind and not spectating and player:GetAttribute("PFESheltered") ~= true then
 		windClock += dt
 		local root = myRoot()
 		if root and not root.Anchored then

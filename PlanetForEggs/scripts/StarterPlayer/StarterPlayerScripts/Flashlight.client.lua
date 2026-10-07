@@ -16,6 +16,7 @@ local holder = UI.new("Frame", {Name = "EquipFlashlight", AnchorPoint = Vector2.
 	BackgroundTransparency = 1}, gui)
 local scale = UI.new("UIScale", {}, holder)
 local button = UI.tile(holder, "Bolt2", "Light", Color3.fromRGB(255, 196, 60), UDim2.fromOffset(78, 78), nil, "EquipFlashlight")
+local face = button:FindFirstChild("Face")   -- (the tile's visible surface: the button itself is transparent)
 local handsShade = UI.new("Frame", {Name = "HandsFull", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45,
 	Size = UDim2.fromScale(1, 1), ZIndex = 12, Visible = false}, button)
 UI.round(handsShade, 18)
@@ -67,7 +68,7 @@ RunService.RenderStepped:Connect(function()
 		out = false
 	end
 	local inCave = player:GetAttribute("PFECave") ~= nil
-	button.BackgroundColor3 = out and Color3.fromRGB(255, 220, 90) or C.White
+	if face then face.BackgroundColor3 = out and Color3.fromRGB(255, 220, 90) or C.White end
 	handsShade.Visible = handsFull()
 	holder.Visible = player:GetAttribute("PFEFlightActive") ~= true and player:GetAttribute("PFEMenuOpen") ~= true
 		and player:GetAttribute("PFEPlanetMapOpen") ~= true

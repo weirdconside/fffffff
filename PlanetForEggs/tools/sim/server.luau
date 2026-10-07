@@ -295,6 +295,17 @@ for _, id in ipairs({"TreasureComet", "CoinRain", "EggTornado"}) do
 	ok(workspace:GetAttribute("PFEEvent") == id, id .. " runs")
 end
 ok(count("LifeCoinDrop") > 0, "coins rained")
+-- an admin starts another event over the Egg Tornado: its tornadoes go
+local tornados = 0
+for _, z in pairs(PlanetLife.Zones()) do if z.Kind == "Tornado" then tornados += 1 end end
+Events.Start("CoinRain")
+task.wait(0.5)
+local left = 0
+for _, z in pairs(PlanetLife.Zones()) do if z.Kind == "Tornado" then left += 1 end end
+ok(tornados > 0 and left == 0, ("an event started over the Egg Tornado takes its tornadoes away (%d -> %d)"):format(tornados, left))
+
+section("errors caught by pcall (Studio pauses on these)")
+for _, c in ipairs(R.CaughtSummary()) do print(("  %4dx  %s"):format(c.N, c.Key)) end
 
 section("summary")
 local real = {}

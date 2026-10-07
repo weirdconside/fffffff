@@ -682,6 +682,19 @@ function Caves.Init(context)
 	Life = ctx.Life
 	L = ctx.PlanetLife
 	ctx.Caves = Caves
+	-- a planet everybody had left lost its eggs with its pool: when the pool comes back, so do the caves' eggs
+	local previous = ctx.OnPoolReady
+	ctx.OnPoolReady = function(planetId)
+		if previous then pcall(previous, planetId) end
+		local system = systems[planetId]
+		if not system or not system.Prepared then return end
+		for _, room in ipairs(system.Rooms) do
+			if room.StockedAt then
+				for i = #(room.Loot or {}), 1, -1 do if not room.Loot[i].Parent then table.remove(room.Loot, i) end end
+				stockEggs(system, room)
+			end
+		end
+	end
 	folder = workspace:FindFirstChild("PFE_Caves") or Instance.new("Folder")
 	folder.Name = "PFE_Caves"; folder.Parent = workspace
 	for _, planet in ipairs(Config.PlanetOrder) do

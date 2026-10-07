@@ -732,7 +732,8 @@ local function runWeather(planetId, state, explorers)
 			local at = spotNear(planetId, r.Position, brk.Near[1], brk.Near[2])
 			if at then
 				local rec = PlanetLife.Breakable(planetId, brk.Kind, CFrame.new(at) * CFrame.Angles(0, rng:NextNumber(0, 6), 0), {Life = 90, Zone = 3,
-					EggMult = brk.Egg and brk.Egg / math.max(0.01, Life.Breakables[brk.Kind].Egg) or 1})
+					-- (a frozen egg always has its egg: it shows through the ice)
+					EggMult = (brk.Kind ~= "IceBlock" and brk.Egg) and brk.Egg / math.max(0.01, Life.Breakables[brk.Kind].Egg) or 1})
 				if rec then tell(planetId, at, "LifeSprout", {Position = at, Kind = brk.Kind}, 300) end
 			end
 		end
@@ -861,6 +862,9 @@ local function step(dt)
 			if not ok then warn("[PFE] weather", state.Id, "failed:", err) end
 			ok, err = pcall(runGeodes, planet.Id, explorers, state)
 			if not ok then warn("[PFE] geodes failed:", err) end
+		elseif state.FlareAt then
+			-- (nobody out there: the solar flare's clock starts again - with its warning - when somebody comes back)
+			state.FlareAt, state.Warned = nil, false
 		end
 	end
 	-- leftovers: shelters past their time, zones, coins; things nobody is near any more

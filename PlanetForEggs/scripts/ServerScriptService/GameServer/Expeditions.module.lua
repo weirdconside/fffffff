@@ -598,7 +598,7 @@ function Expeditions.UpgradePickup(item, to)
 		item:SetAttribute("VisualOffset", proxy.CFrame:ToObjectSpace(visual:GetPivot()))
 	end
 	item:SetAttribute("Mutation", egg.Mutation)
-	local title = Config.EggDisplayName(egg)
+	local title = egg.GoldenRace and "THE GOLDEN EGG" or Config.EggDisplayName(egg)
 	local label = item:FindFirstChild("PFELabel")
 	if label then label.Title.Text = title end
 	local prompt = proxy and proxy:FindFirstChild("CollectPickup")

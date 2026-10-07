@@ -20,6 +20,7 @@ local holder = UI.new("Frame", {Name = "EquipBat", AnchorPoint = Vector2.new(1, 
 	BackgroundTransparency = 1}, gui)
 local scale = UI.new("UIScale", {}, holder)
 local button = UI.tile(holder, BAT_ICON, "Bat", Color3.fromRGB(255, 150, 60), UDim2.fromOffset(78, 78), nil, "EquipBat")
+local face = button:FindFirstChild("Face")   -- (the tile's visible surface: the button itself is transparent)
 -- darkened while both hands hold an egg
 local handsShade = UI.new("Frame", {Name = "HandsFull", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45,
 	Size = UDim2.fromScale(1, 1), ZIndex = 12, Visible = false}, button)
@@ -89,7 +90,13 @@ local function closest()
 		if core and model:IsDescendantOf(workspace) and not model:GetAttribute("Dead") and not model:GetAttribute("Under") then
 			local size = math.max(core.Size.X, core.Size.Z) * 0.5
 			local d = math.max(0, (core.Position - root.Position).Magnitude - size)
-			if d < bestDistance then best, bestDistance = {Smash = model, Character = model}, d end
+			-- (a boss's server model is just its invisible hitbox: the outline goes on the body BossClient draws)
+			local drawn = model
+			if model:GetAttribute("Boss") then
+				local bodies = workspace:FindFirstChild("PFE_BossBodies")
+				drawn = bodies and bodies:FindFirstChild("Boss_" .. tostring(model:GetAttribute("Boss"))) or model
+			end
+			if d < bestDistance then best, bestDistance = {Smash = model, Character = drawn}, d end
 		end
 	end
 	return best
@@ -101,7 +108,7 @@ RunService.RenderStepped:Connect(function()
 		if humanoid then humanoid:UnequipTools() end
 		out = false
 	end
-	button.BackgroundColor3 = out and Color3.fromRGB(255, 90, 60) or C.White
+	if face then face.BackgroundColor3 = out and Color3.fromRGB(255, 90, 60) or C.White end
 	handsShade.Visible = handsFull()
 	holder.Visible = player:GetAttribute("PFEFlightActive") ~= true and player:GetAttribute("PFEMenuOpen") ~= true
 		and player:GetAttribute("PFEPlanetMapOpen") ~= true

@@ -67,14 +67,16 @@ function Fake:GetAttributeChangedSignal() return dummy end
 -- ---------------------------------------------------------------- the avatar
 -- Studio preview: a borrowed username and that account's own avatar (never in a published game)
 local usedNames = {}
+local badNames = {}   -- (v41) names that didn't resolve (renamed / deleted accounts): never looked up again this server
 local function previewIdentity()
 	local names = Config.Bots.PreviewNames or {}
 	local start = rng:NextInteger(1, math.max(1, #names))
 	for i = 0, #names - 1 do
 		local name = names[(start + i - 1) % #names + 1]
-		if not usedNames[name] then
+		if not usedNames[name] and not badNames[name] then
 			usedNames[name] = true
 			local okId, userId = pcall(function() return Players:GetUserIdFromNameAsync(name) end)
+			if not okId or not userId then badNames[name] = true end
 			local desc
 			if okId and userId then pcall(function() desc = Players:GetHumanoidDescriptionFromUserId(userId) end) end
 			local display = name
@@ -147,6 +149,12 @@ local function place(bot, cf)
 	model.Parent = folder
 	local r = root(bot)
 	if r then r.Anchored = false end
+	-- (a lag spike in progress would snap the body back to where it was before this move)
+	local m = bot.Motor
+	if m and m.LagUntil then
+		m.LagUntil, m.LagFrom = nil, nil
+		if bot.Animate then bot.Animate.Frozen = false end
+	end
 	model:PivotTo(cf)
 	if r then
 		pcall(function() r.AssemblyLinearVelocity = Vector3.zero end)
@@ -466,10 +474,9 @@ local function despawn(bot, reason)
 end
 Bots.Despawn = despawn
 
+local pending = nil   -- (v41) the bot whose avatar is still loading: {Bot, Base} (MakeRoom can call it off)
 local function spawnBot()
-	local free = freeBases()
-	if #free == 0 then return nil end
-	local slot = free[rng:NextInteger(1, #free)]
+	if #freeBases() == 0 then return nil end
 	local persona = Looks.Persona()
 	local name = Looks.Name()
 	for _ = 1, 5 do if not usedNames[name] then break end; name = Looks.Name() end
@@ -484,6 +491,11 @@ local function spawnBot()
 	usedNames[bot.Name] = true
 	bot.Description = bot.Description or Looks.Describe()
 	local data = newData(persona)
+	-- (v41) the base is chosen and claimed only now, with no wait in between: the avatar calls above take a moment and a
+	-- player who joined meanwhile may have been given the base picked before them
+	local free = freeBases()
+	if #free == 0 then usedNames[bot.Name] = nil; return nil end
+	local slot = free[rng:NextInteger(1, #free)]
 	local fake = setmetatable({UserId = -bot.Id, Name = bot.Name, DisplayName = bot.DisplayName, Character = nil, Attributes = {},
 		IsBot = true, Bot = bot}, Fake)
 	local P = {IsBot = true, Bot = bot, Player = fake, Data = data, Base = slot[1], BaseIndex = slot[2], Planet = "Base", Busy = false,
@@ -493,7 +505,17 @@ local function spawnBot()
 	-- claim the base before the avatar loads (a player joining meanwhile gets another one)
 	slot[1]:SetAttribute("OwnerUserId", fake.UserId)
 	slot[1]:SetAttribute("OwnerName", bot.DisplayName)
+	pending = {Bot = bot, Base = slot[1]}
 	local model = makeBody(bot)
+	if pending and pending.Bot == bot then pending = nil end
+	if bot.Cancelled then
+		-- (a player needed the base while the avatar loaded: it never arrives)
+		bot.Gone = true
+		if bot.Animate then pcall(bot.Animate.Destroy, bot.Animate) end
+		if model then model:Destroy() end
+		usedNames[bot.Name] = nil
+		return nil
+	end
 	if not model then
 		slot[1]:SetAttribute("OwnerUserId", 0); slot[1]:SetAttribute("OwnerName", "")
 		usedNames[bot.Name] = nil
@@ -582,8 +604,14 @@ local function leaveOne()
 	despawn(best or bots[#bots], "room")
 end
 function Bots.MakeRoom()
-	if #freeBases() > 0 or #bots == 0 then return end
-	leaveOne()
+	if #freeBases() > 0 then return end
+	if #bots > 0 then leaveOne(); return end
+	-- (v41) the only bot is still loading its avatar: it gives the base up before it even arrives
+	if pending and not pending.Bot.Cancelled then
+		pending.Bot.Cancelled = true
+		pending.Base:SetAttribute("OwnerUserId", 0); pending.Base:SetAttribute("OwnerName", "")
+		pending = nil
+	end
 end
 
 -- ---------------------------------------------------------------- dying and coming back (like a player)
@@ -617,6 +645,12 @@ function Bots.Kill(bot, reason)
 		bot.Flight = nil
 		P.Oxygen = ctx.maxOxygen(P)
 		local model = makeBody(bot)
+		-- (it left the game while its new body loaded)
+		if bot.Gone then
+			if model then model:Destroy() end
+			if bot.Animate then pcall(bot.Animate.Destroy, bot.Animate) end
+			return
+		end
 		if not model then task.delay(5, function() if not bot.Gone then bot.Dead = false; Bots.Kill(bot, "retry") end end); return end
 		local broken = false
 		for _, tool in pairs(bot.Tools or {}) do if not tool:FindFirstChild("Handle") or tool.Parent == nil then broken = true end end

@@ -63,7 +63,8 @@ function Looks.Describe()
 		elseif top < 0.75 then table.insert(layered, {AssetId = pick(TSHIRTS3D), AccessoryType = Enum.AccessoryType.TShirt, IsLayered = true, Order = 1})
 		else table.insert(layered, {AssetId = pick(SWEATERS3D), AccessoryType = Enum.AccessoryType.Sweater, IsLayered = true, Order = 2}) end
 		table.insert(layered, {AssetId = pick(PANTS3D), AccessoryType = Enum.AccessoryType.Pants, IsLayered = true, Order = 4})
-		pcall(function() desc:SetAccessories(layered, true) end)
+		-- (false: the layered clothes only - true would wipe the hair / hat / face / neck accessories set above)
+		pcall(function() desc:SetAccessories(layered, false) end)
 		if rng:NextNumber() < 0.5 then desc.Pants = pick(PANTS) end
 	end
 	desc.HeightScale = rng:NextNumber(0.92, 1.05); desc.WidthScale = rng:NextNumber(0.8, 1)

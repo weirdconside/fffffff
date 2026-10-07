@@ -2,15 +2,19 @@
 -- Real Roblox datatypes and instances (with Lune's property checks: a wrong property name is an error), plus fakes
 -- for what Lune lacks: events, a few engine methods (PivotTo, Raycast...), characters, players, remotes.
 -- Errors in scripts / spawned threads and every warn() are collected in Runtime.Errors / Runtime.Warnings.
--- Needs a Lune (0.10.x) whose lune-roblox lets roblox.implementProperty override real properties (Part.Position...):
--- in lune-roblox's src/instance/base.rs, instance_property_get / _set check InstanceRegistry::find_property_getter /
--- find_property_setter before the reflection database (stock Lune only falls back to them for unknown names).
+-- Needs a Lune (0.10.x) with three small patches to lune-roblox's src/instance/base.rs:
+--  * instance_property_get / _set check InstanceRegistry::find_property_getter / find_property_setter before the
+--    reflection database (stock Lune only falls back to them for unknown names), so implementProperty can override
+--    real properties (Part.Position...);
+--  * setting a Ref property to nil clears it (stock: "Failed to convert from 'nil' into 'Ref'");
+--  * a property with no default in the database reads as its type's zero ("" / 0 / false) instead of an error.
+-- Errors swallowed by pcall / xpcall (which Studio, set to pause on all exceptions, stops on) go to Runtime.Caught.
 local roblox = require("@lune/roblox")
 local luau = require("@lune/luau")
 local task = require("@lune/task")
 local fs = require("@lune/fs")
 
-local Runtime = {Errors = {}, Warnings = {}, Effects = {}, Notices = {}, Log = {}}
+local Runtime = {Errors = {}, Warnings = {}, Effects = {}, Notices = {}, Log = {}, Caught = {}}
 local Instance = roblox.Instance
 local Vector3, Vector2, CFrame, Color3, UDim, UDim2, BrickColor = roblox.Vector3, roblox.Vector2, roblox.CFrame, roblox.Color3, roblox.UDim, roblox.UDim2, roblox.BrickColor
 local NumberSequence, NumberSequenceKeypoint, ColorSequence, ColorSequenceKeypoint = roblox.NumberSequence, roblox.NumberSequenceKeypoint, roblox.ColorSequence, roblox.ColorSequenceKeypoint
@@ -55,6 +59,12 @@ function Signal:Connect(fn)
 	table.insert(self.Handlers, handler)
 	local connection = {Connected = true}
 	function connection:Disconnect() handler.Connected = false; connection.Connected = false end
+	-- (a remote's events wait in a queue until somebody listens, as in Roblox)
+	if self.Buffer and #self.Buffer > 0 then
+		local queued = self.Buffer
+		self.Buffer = {}
+		for _, args in ipairs(queued) do simTask.spawn(fn, table.unpack(args, 1, args.n)) end
+	end
 	return connection
 end
 function Signal:Once(fn)
@@ -63,6 +73,11 @@ function Signal:Once(fn)
 	return c
 end
 function Signal:Fire(...)
+	if self.Buffer then
+		local any = false
+		for _, h in ipairs(self.Handlers) do if h.Connected then any = true; break end end
+		if not any then table.insert(self.Buffer, table.pack(...)); return end
+	end
 	for _, h in ipairs(table.clone(self.Handlers)) do
 		if h.Connected then simTask.spawn(h.Fn, ...) end
 	end
@@ -80,7 +95,11 @@ local function eventOf(inst, name)
 	local t = events[inst]
 	if not t then t = {}; events[inst] = t end
 	local s = t[name]
-	if not s then s = Signal.new(); t[name] = s end
+	if not s then
+		s = Signal.new()
+		if name == "OnClientEvent" or name == "OnServerEvent" then s.Buffer = {} end
+		t[name] = s
+	end
 	return s
 end
 Runtime.Event = eventOf
@@ -99,7 +118,9 @@ local EVENTS = {
 		"PromptPremiumPurchaseFinished", "PromptSubscriptionPurchaseFinished"},
 	TextChatService = {"MessageReceived", "SendingMessage"},
 	ProximityPromptService = {"PromptTriggered", "PromptShown", "PromptHidden"},
-	UserInputService = {"InputBegan", "InputEnded", "InputChanged", "TouchStarted", "TouchEnded", "TouchMoved", "TouchTap", "LastInputTypeChanged", "JumpRequest", "TextBoxFocused", "TextBoxFocusReleased"},
+	UserInputService = {"InputBegan", "InputEnded", "InputChanged", "TouchStarted", "TouchEnded", "TouchMoved", "TouchTap", "LastInputTypeChanged", "JumpRequest", "TextBoxFocused", "TextBoxFocusReleased",
+		"TouchTapInWorld", "TouchLongPress", "TouchPinch", "TouchSwipe", "TouchPan", "TouchRotate", "PointerAction", "WindowFocused",
+		"WindowFocusReleased", "GamepadConnected", "GamepadDisconnected"},
 	GuiObject = {"MouseEnter", "MouseLeave", "InputBegan", "InputEnded", "InputChanged", "SelectionGained", "SelectionLost"},
 	GuiButton = {"Activated", "MouseButton1Click", "MouseButton1Down", "MouseButton1Up", "MouseButton2Click"},
 	TextBox = {"FocusLost", "Focused", "ReturnPressedFromOnScreenKeyboard"},
@@ -262,12 +283,25 @@ impl("Player", "Kick", function(self, reason) record(Runtime.Warnings, "kicked "
 impl("Player", "LoadCharacterAsync", function(self) Runtime.SpawnCharacter(self) end)
 impl("Player", "LoadCharacter", function(self) Runtime.SpawnCharacter(self) end)
 impl("Player", "RequestStreamAroundAsync", function() end)
-impl("Player", "GetMouse", function() return {} end)
+impl("Player", "GetMouse", function() return Runtime.Mouse or {} end)
 impl("RemoteEvent", "FireClient", function(self, player, ...)
 	table.insert(Runtime.Effects, {Remote = self.Name, Player = player, Args = table.pack(...)})
 	if Runtime.OnFireClient then Runtime.OnFireClient(self, player, ...) end
 end)
-impl("RemoteEvent", "FireAllClients", function(self, ...) table.insert(Runtime.Effects, {Remote = self.Name, Args = table.pack(...)}) end)
+impl("RemoteEvent", "FireAllClients", function(self, ...)
+	table.insert(Runtime.Effects, {Remote = self.Name, Args = table.pack(...)})
+	if Runtime.OnFireAllClients then Runtime.OnFireAllClients(self, ...) end
+end)
+-- (client scripts in the same simulator: their remotes reach the server as Runtime.LocalPlayer)
+impl("RemoteEvent", "FireServer", function(self, ...)
+	if Runtime.OnFireServer then return Runtime.OnFireServer(self, ...) end
+	eventOf(self, "OnServerEvent"):Fire(Runtime.LocalPlayer, ...)
+end)
+impl("RemoteFunction", "InvokeServer", function(self, ...)
+	local fn = field(self, "Invoke", nil)
+	if not fn then return nil end
+	return fn(Runtime.LocalPlayer, ...)
+end)
 impl("BindableEvent", "Fire", function(self, ...) eventOf(self, "Event"):Fire(...) end)
 impl("CollectionService", "SimCSAddTag", function(_, inst, tag) inst:AddTag(tag) end)
 impl("CollectionService", "SimCSRemoveTag", function(_, inst, tag) inst:RemoveTag(tag) end)
@@ -316,6 +350,16 @@ impl("Players", "CreateHumanoidModelFromDescription", function()
 end)
 impl("Players", "CreateHumanoidModelFromUserId", function() error("no avatars in the simulator") end)
 impl("TeleportService", "TeleportAsync", function() end)
+-- (no navmesh in the simulator: every path comes back NoPath and the bots walk straight)
+impl("PathfindingService", "CreatePath", function()
+	return {Status = Enum.PathStatus.NoPath, ComputeAsync = function() end, GetWaypoints = function() return {} end, Blocked = Signal.new(),
+		Unblocked = Signal.new(), SimDestroy = function() end, Destroy = function() end}
+end)
+impl("Players", "GetHumanoidDescriptionFromOutfitId", function() return Instance.new("HumanoidDescription") end)
+impl("HumanoidDescription", "SetAccessories", function() end)
+impl("HumanoidDescription", "GetAccessories", function() return {} end)
+impl("HumanoidDescription", "SetEmotes", function() end)
+impl("HumanoidDescription", "SetEquippedEmotes", function() end)
 impl("BasePart", "GetTouchingParts", function() return {} end)
 impl("BasePart", "CanSetNetworkOwnership", function() return true end)
 impl("BasePart", "GetNetworkOwner", function() return nil end)
@@ -323,6 +367,8 @@ impl("BasePart", "GetNetworkOwner", function() return nil end)
 function Runtime.FakeTrack()
 	return {Play = function() end, Stop = function() end, AdjustSpeed = function() end, AdjustWeight = function() end, IsPlaying = false, Looped = false,
 		Priority = Enum.AnimationPriority.Core, Length = 1, TimePosition = 0, Stopped = Signal.new(), KeyframeReached = Signal.new(),
+		DidLoop = Signal.new(), Ended = Signal.new(), Speed = 1, WeightCurrent = 1, WeightTarget = 1, Destroy = function() end,
+		SimDestroy = function() end, GetTimeOfKeyframe = function() return 0 end,
 		GetMarkerReachedSignal = function() return Signal.new() end}
 end
 
@@ -363,15 +409,54 @@ function Runtime.Load(placePath, side)
 	pcall(roblox.implementProperty, "RunService", "RenderStepped", function() return eventOf(run, "RenderStepped") end)
 	pcall(roblox.implementProperty, "RunService", "Stepped", function() return eventOf(run, "Stepped") end)
 	pcall(roblox.implementProperty, "RunService", "PreSimulation", function() return eventOf(run, "Heartbeat") end)
+	pcall(roblox.implementProperty, "RunService", "PostSimulation", function() return eventOf(run, "Heartbeat") end)
+	pcall(roblox.implementProperty, "RunService", "PreRender", function() return eventOf(run, "RenderStepped") end)
+	pcall(roblox.implementProperty, "RunService", "PreAnimation", function() return eventOf(run, "RenderStepped") end)
 	return game
 end
 
 -- the `game` the scripts see: the real DataModel, plus the properties Lune can't read off it (JobId...)
 local gameProxy
-local function gameFor()
+local gameFor
+-- (the client's `game`: the same DataModel, but RunService says it's the client)
+local clientProxy
+local function clientGame()
+	if clientProxy then return clientProxy end
+	local real = Runtime.game
+	local run = real:GetService("RunService")
+	local runProxy = setmetatable({}, {
+		__index = function(_, key)
+			if key == "IsClient" then return function() return true end end
+			if key == "IsServer" then return function() return false end end
+			local value = run[key]
+			if type(value) == "function" then return function(self, ...) return value(run, ...) end end
+			return value
+		end,
+		__tostring = function() return "RunService" end,
+	})
+	local server = gameFor()
+	clientProxy = setmetatable({}, {
+		__index = function(_, key)
+			if key == "GetService" or key == "FindService" then
+				return function(_, name)
+					if name == "RunService" then return runProxy end
+					return real:GetService(name)
+				end
+			end
+			if key == "RunService" then return runProxy end
+			local value = server[key]
+			if type(value) == "function" then return function(self, ...) return value(self == clientProxy and server or self, ...) end end
+			return value
+		end,
+		__tostring = function() return "Game" end,
+	})
+	return clientProxy
+end
+function gameFor()
 	if gameProxy then return gameProxy end
 	local real = Runtime.game
-	local extra = {JobId = "", PlaceId = 0, GameId = 0, PrivateServerId = "", CreatorId = 0, PlaceVersion = 1, BindToClose = function() end}
+	local extra = {JobId = "", PlaceId = 0, GameId = 0, PrivateServerId = "", CreatorId = 0, PlaceVersion = 1, BindToClose = function() end,
+		IsLoaded = function() return true end, Loaded = Signal.new()}
 	gameProxy = setmetatable({}, {
 		__index = function(_, key)
 			if extra[key] ~= nil then return extra[key] end
@@ -384,11 +469,38 @@ local function gameFor()
 	return gameProxy
 end
 
-local modules = {}
+local caches = {server = {}, client = {}}
 local loadScript
-local function makeEnv(scriptInstance)
+-- (Studio set to pause on all exceptions stops on errors inside pcall too: every one is kept in Runtime.Caught -
+-- {Where = the script line, Error = the message} - for the scenario to report)
+local function caught(err)
+	local where = ""
+	for line in string.gmatch(debug.traceback("", 2), "[^\n]+") do
+		local name, number = string.match(line, '%[string "([^"]+)"%]:(%d+)')
+		if name then where = name .. ":" .. number; break end
+	end
+	table.insert(Runtime.Caught, {Where = where, Error = tostring(err)})
+end
+function Runtime.WatchedPcall(fn, ...)
+	return xpcall(fn, function(err) caught(err); return err end, ...)
+end
+function Runtime.WatchedXpcall(fn, handler, ...)
+	return xpcall(fn, function(err) caught(err); return handler(err) end, ...)
+end
+-- the caught errors, one line per place (most frequent first)
+function Runtime.CaughtSummary()
+	local byKey, list = {}, {}
+	for _, c in ipairs(Runtime.Caught) do
+		local key = c.Where .. " | " .. string.sub(c.Error, 1, 140)
+		if not byKey[key] then byKey[key] = {Key = key, N = 0}; table.insert(list, byKey[key]) end
+		byKey[key].N += 1
+	end
+	table.sort(list, function(a, b) return a.N > b.N end)
+	return list
+end
+local function makeEnv(scriptInstance, side)
 	local env = {
-		game = gameFor(), workspace = Runtime.workspace, Workspace = Runtime.workspace, script = scriptInstance, task = simTask,
+		game = side == "client" and clientGame() or gameFor(), workspace = Runtime.workspace, Workspace = Runtime.workspace, script = scriptInstance, task = simTask,
 		Instance = {new = function(class, parent) local i = Instance.new(class); if parent then i.Parent = parent end; return i end},
 		Vector3 = Vector3, Vector2 = Vector2, CFrame = CFrame, Color3 = Color3, UDim = UDim, UDim2 = UDim2, BrickColor = BrickColor,
 		NumberSequence = NumberSequence, NumberSequenceKeypoint = NumberSequenceKeypoint, ColorSequence = ColorSequence,
@@ -397,7 +509,7 @@ local function makeEnv(scriptInstance)
 		RaycastParams = {new = params}, OverlapParams = {new = params},
 		typeof = typeof, type = type, print = function(...) table.insert(Runtime.Log, table.concat(table.pack(...), " ")) end,
 		warn = function(...) local parts = {}; for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end; record(Runtime.Warnings, table.concat(parts, " ")) end,
-		error = error, assert = assert, pcall = pcall, xpcall = xpcall, select = select, tostring = tostring, tonumber = tonumber,
+		error = error, assert = assert, pcall = Runtime.WatchedPcall, xpcall = Runtime.WatchedXpcall, select = select, tostring = tostring, tonumber = tonumber,
 		ipairs = ipairs, pairs = pairs, next = next, setmetatable = setmetatable, getmetatable = getmetatable, rawget = rawget, rawset = rawset,
 		rawequal = rawequal, rawlen = rawlen, unpack = table.unpack, math = math, string = string, table = table, coroutine = coroutine, os = os,
 		utf8 = utf8, bit32 = bit32, buffer = buffer, debug = debug, tick = os.clock, time = os.clock, wait = task.wait, delay = simTask.delay,
@@ -405,7 +517,7 @@ local function makeEnv(scriptInstance)
 		settings = function() return {} end, shared = {},
 	}
 	env.require = function(target)
-		if typeof(target) == "Instance" then return loadScript(target) end
+		if typeof(target) == "Instance" then return loadScript(target, side) end
 		error("require of a non-instance in the simulator: " .. tostring(target))
 	end
 	env._G = env
@@ -419,23 +531,28 @@ local function prepare(source)
 	source = string.gsub(source, ":ClearAllChildren%(", ":SimClearAllChildren(")
 	return source
 end
-loadScript = function(inst)
+-- (the server and the client each have their own copy of every ModuleScript, as in Roblox)
+loadScript = function(inst, side)
+	side = side or "server"
+	local modules = caches[side]
 	if modules[inst] ~= nil then
 		if modules[inst] == false then error("require loop on " .. inst:GetFullName()) end
 		return modules[inst].Value
 	end
 	modules[inst] = false
-	local fn = luau.load(prepare(inst.Source), {debugName = inst:GetFullName(), environment = makeEnv(inst)})
+	local fn = luau.load(prepare(inst.Source), {debugName = (side == "client" and "client:" or "") .. inst:GetFullName(), environment = makeEnv(inst, side)})
 	local results = table.pack(fn())
 	modules[inst] = {Value = results[1]}
 	return results[1]
 end
 Runtime.Require = loadScript
 -- run a Script / LocalScript in its own thread
-function Runtime.Run(inst)
-	local fn = luau.load(prepare(inst.Source), {debugName = inst:GetFullName(), environment = makeEnv(inst)})
+function Runtime.Run(inst, side)
+	local fn = luau.load(prepare(inst.Source), {debugName = (side == "client" and "client:" or "") .. inst:GetFullName(), environment = makeEnv(inst, side)})
 	simTask.spawn(fn)
 end
+-- the client's copy of a module (for a scenario to look inside)
+function Runtime.RequireClient(inst) return loadScript(inst, "client") end
 
 -- ---------------------------------------------------------------- players and characters
 local playerOf = {}

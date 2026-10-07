@@ -68,7 +68,8 @@ RunService.RenderStepped:Connect(function(dt)
 	local eye = camera.CFrame.Position
 	for _, g in ipairs(ghosts) do
 		-- (v36) only the ghosts you could see bob (one bulk move each)
-		if g.Model.Parent and (g.Home.Position - eye).Magnitude < 320 then
+		-- (in the world only: the join cutscene takes the whole Halloween folder out for a while)
+		if g.Model:IsDescendantOf(workspace) and (g.Home.Position - eye).Magnitude < 320 then
 			local y = math.sin(clock * g.Speed + g.Phase) * 1.4
 			local pivot = g.Home * CFrame.new(0, y, 0) * CFrame.Angles(0, math.sin(clock * 0.3 + g.Phase) * 0.6, math.sin(clock * 0.9 + g.Phase) * 0.06)
 			if not g.Parts then

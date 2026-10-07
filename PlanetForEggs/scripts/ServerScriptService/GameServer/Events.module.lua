@@ -51,7 +51,8 @@ end
 local function groundEggs(planetId)
 	local list = {}
 	for _, item in ipairs(ctx.Expeditions.PlanetEggs(planetId)) do
-		if not item:GetAttribute("IslandId") and item:GetAttribute("Mutation") ~= "Cosmic" then table.insert(list, item) end
+		-- (not the race's Golden Egg: an event must not turn it into some other egg)
+		if not item:GetAttribute("IslandId") and not item:GetAttribute("GoldenRace") and item:GetAttribute("Mutation") ~= "Cosmic" then table.insert(list, item) end
 	end
 	return list
 end
@@ -194,16 +195,22 @@ local function nearSomebody(planetId, minD, maxD)
 	return r and ctx.PlanetLife.SpotNear(planetId, r.Position, minD, maxD)
 end
 -- Treasure Comet: a comet crashes near every explorer (one per explorer, three a planet at most) and leaves its crystal
--- heart in a crater: smash it - three eggs and a heap of coins
+-- heart in a crater: smash it - three eggs and a heap of coins. (Whoever lands on a planet during the event gets theirs too.)
 function handlers.TreasureComet(elapsed, state)
-	if state.Done or not ctx.PlanetLife then return end
-	state.Done = true
+	if not ctx.PlanetLife then return end
+	state.Got = state.Got or {}
+	state.Count = state.Count or {}
+	state.Next = state.Next or 0
+	if elapsed < state.Next or elapsed > 40 then return end
+	state.Next = elapsed + 1
 	for _, planetId in ipairs(ctx.Expeditions.ActivePlanets()) do
-		local explorers = surface(planetId)
-		for i = 1, math.min(3, #explorers) do
-			local r = ctx.root(explorers[i].Player)
+		for _, explorer in ipairs(surface(planetId)) do
+			if (state.Count[planetId] or 0) >= 3 then break end
+			local r = not state.Got[explorer] and ctx.root(explorer.Player)
 			local at = r and ctx.PlanetLife.SpotNear(planetId, r.Position, 50, 110)
 			if at then
+				state.Got[explorer] = true
+				state.Count[planetId] = (state.Count[planetId] or 0) + 1
 				ctx.PlanetLife.Strike(planetId, "Comet", at, {Delay = 3, Radius = 16, Damage = 30, Knock = 70}, {Reason = "A comet hit you!", Range = 1200,
 					OnLand = function()
 						ctx.PlanetLife.Breakable(planetId, "CometCore", CFrame.new(at) * CFrame.Angles(0, rng:NextNumber(0, 6), 0), {Life = 150, Zone = 4, Size = 10})
@@ -283,6 +290,9 @@ local state = {}
 function Events.Start(id)
 	local event = Config.Events[id]
 	if not event then return end
+	-- (an event started over a running one - an admin command: the old one is tidied away first)
+	if current and enders[current] then pcall(enders[current], state) end
+	clearGlow()
 	current = id
 	endsAt = workspace:GetServerTimeNow() + event.Duration
 	state = {Started = os.clock()}

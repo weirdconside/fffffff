@@ -98,7 +98,15 @@ local function poll()
 		if carried and carried.GoldenRace then
 			carrier = profile
 			local r = ctx.root(profile.Player)
-			if r then race.Position = r.Position end
+			if r then
+				-- (where it would fall: on the ground under the carrier - the planets are flat - or the cave floor)
+				local planet = Config.Planets[race.Planet]
+				if profile.InCave or not planet then
+					race.Position = r.Position - Vector3.new(0, 3, 0)
+				else
+					race.Position = Vector3.new(r.Position.X, planet.Origin.Y, r.Position.Z)
+				end
+			end
 			found = true
 		end
 	end
