@@ -8,6 +8,7 @@
 --  * Aliens shout "!" when they spot you, flash when hit and burst when defeated; their hits knock
 --    you back a little.
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
@@ -192,24 +193,29 @@ pcall(function() mouse = player:GetMouse() end)
 local aliensFolder = workspace:WaitForChild("PFE_Aliens", 10)
 -- snap to an alien close to where the player aimed (so touch players can hit them too)
 local function assist(origin, aim)
-	if not aliensFolder then return aim end
 	local direction = (aim - origin)
 	if direction.Magnitude < 0.1 then return aim end
 	local unit = direction.Unit
 	local best, bestScore
-	for _, alien in ipairs(aliensFolder:GetChildren()) do
+	local function consider(position, slack)
+		local rel = position - origin
+		local along = rel:Dot(unit)
+		if along > 0 and along < R.Range then
+			local miss = (rel - unit * along).Magnitude
+			local nearAim = (position - aim).Magnitude
+			local score = math.min(miss / math.max(4 + slack, along * 0.12), nearAim / (10 + slack))
+			if score < 1 and (not bestScore or score < bestScore) then best, bestScore = position, score end
+		end
+	end
+	for _, alien in ipairs(aliensFolder and aliensFolder:GetChildren() or {}) do
 		local torso = alien:FindFirstChild("Torso")
 		local humanoid = alien:FindFirstChildOfClass("Humanoid")
-		if torso and humanoid and humanoid.Health > 0 then
-			local rel = torso.Position - origin
-			local along = rel:Dot(unit)
-			if along > 0 and along < R.Range then
-				local miss = (rel - unit * along).Magnitude
-				local nearAim = (torso.Position - aim).Magnitude
-				local score = math.min(miss / math.max(4, along * 0.12), nearAim / 10)
-				if score < 1 and (not bestScore or score < bestScore) then best, bestScore = torso.Position, score end
-			end
-		end
+		if torso and humanoid and humanoid.Health > 0 then consider(torso.Position, 0) end
+	end
+	-- (v41) the bosses and the crystals / rocks / chests (their size makes them easier to hit)
+	for _, model in ipairs(CollectionService:GetTagged("PFESmashable")) do
+		local core = model:IsDescendantOf(workspace) and (model:FindFirstChild("Hitbox") or model.PrimaryPart)
+		if core and not model:GetAttribute("Dead") and not model:GetAttribute("Under") then consider(core.Position, math.max(core.Size.X, core.Size.Y) * 0.4) end
 	end
 	return best or aim
 end

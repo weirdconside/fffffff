@@ -23,7 +23,15 @@ end
 
 local changed, created, same = 0, 0, 0
 local function walk(path, segments)
-	for _, entry in fs.readDir(path) do
+	-- the files first: a new script must exist before the folder of its children is walked
+	local entries = fs.readDir(path)
+	local isDir = {}
+	for _, entry in entries do isDir[entry] = fs.isDir(path .. "/" .. entry) end
+	table.sort(entries, function(a, b)
+		if isDir[a] ~= isDir[b] then return not isDir[a] end
+		return a < b
+	end)
+	for _, entry in entries do
 		local full = path .. "/" .. entry
 		if fs.isDir(full) then
 			local copy = table.clone(segments)

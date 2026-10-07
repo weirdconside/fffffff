@@ -78,7 +78,7 @@ function Hud.Init(store)
 	local locRegion = UI.text(location, "", UDim2.new(1, 0, 0, 22), UDim2.fromOffset(0, 40), 19, C.Soft)
 	locRegion.Name = "Region"; locRegion.TextXAlignment = Enum.TextXAlignment.Center
 
-	local expedition = UI.new("Frame", {Name = "Expedition", BackgroundTransparency = 1, Size = UDim2.fromOffset(360, 84),
+	local expedition = UI.new("Frame", {Name = "Expedition", BackgroundTransparency = 1, Size = UDim2.fromOffset(360, 108),
 		Position = UDim2.new(0.5, -180, 0, 68), Visible = false}, topCenter)
 	-- air
 	local bubble = UI.new("Frame", {Name = "AirIcon", BackgroundColor3 = C.Cyan, Size = UDim2.fromOffset(36, 36), Position = UDim2.fromOffset(0, 0), ZIndex = 7}, expedition)
@@ -102,6 +102,33 @@ function Hud.Init(store)
 	end
 	local _, cargoText = chip("Cargo", "Egg", 1)
 	local scanner, scanText = chip("Scanner", "Pulse", 4, 118)
+	-- (v41) the planet's weather (LifeConfig) and how long it lasts; whether you're under shelter when it matters;
+	-- in a cave: how deep you are
+	local Life = require(store.api:WaitForChild("LifeConfig"))
+	local weatherLine = UI.text(expedition, "", UDim2.new(1, 60, 0, 24), UDim2.new(0, -30, 0, 82), 19, C.White)
+	weatherLine.Name = "Weather"; weatherLine.TextXAlignment = Enum.TextXAlignment.Center; weatherLine.TextWrapped = false; weatherLine.TextScaled = true
+	UI.new("UITextSizeConstraint", {MaxTextSize = 19, MinTextSize = 10}, weatherLine)
+	local function refreshWeather()
+		local view = store.spectate or store.state
+		local planetId = view and view.Planet
+		local cave = player:GetAttribute("PFECave")
+		if type(cave) == "string" and cave ~= "" then
+			local depth = player:GetAttribute("PFECaveDepth") or 0
+			weatherLine.Text = string.upper(cave) .. "  -  depth " .. depth .. "/" .. (player:GetAttribute("PFECaveMax") or 16) .. "  -  air vents refill your air"
+			weatherLine.TextColor3 = Color3.fromRGB(255, 205, 120)
+			return
+		end
+		local id = planetId and workspace:GetAttribute("PFEWeather_" .. planetId)
+		local def = id and Life.Weather[id]
+		if not def or player:GetAttribute("PFEDungeon") then weatherLine.Text = ""; return end
+		local left = math.max(0, (workspace:GetAttribute("PFEWeatherEnds_" .. planetId) or 0) - workspace:GetServerTimeNow())
+		local text = string.upper(def.Name) .. string.format("  %d:%02d", left // 60, left % 60)
+		local sheltered = player:GetAttribute("PFESheltered")
+		if sheltered == true then text ..= "  -  SHELTERED"
+		elseif sheltered == false then text ..= "  -  find shelter!" end
+		weatherLine.Text = text
+		weatherLine.TextColor3 = sheltered == false and Color3.fromRGB(255, 140, 120) or def.Color:Lerp(C.White, 0.25)
+	end
 	-- game passes won in the alien ships, with the time they have left
 	local passRow = UI.new("Frame", {Name = "TempPasses", BackgroundTransparency = 1, Size = UDim2.fromOffset(440, 30)}, topCenter)
 	UI.list(passRow, 8, true, Enum.HorizontalAlignment.Center).VerticalAlignment = Enum.VerticalAlignment.Center
@@ -242,7 +269,7 @@ function Hud.Init(store)
 			if left <= 0 then entry.Frame:Destroy(); passChips[key] = nil end
 		end
 		passRow.Visible = next(passChips) ~= nil
-		passRow.Position = UDim2.new(0.5, -220, 0, expedition.Visible and 156 or (location.Visible and 68 or 4))
+		passRow.Position = UDim2.new(0.5, -220, 0, expedition.Visible and 182 or (location.Visible and 68 or 4))
 	end
 
 	-- ---------------------------------------------------------------- state rendering
@@ -321,6 +348,7 @@ function Hud.Init(store)
 			slowClock = 0
 			tickPasses()
 			if location.Visible and shipName() then locRegion.Text = shipLine() end
+			if expedition.Visible then refreshWeather() end
 		if store.spectate then refresh(store.state) end
 		end
 		if math.abs(targetCoins - shownCoins) > 0.5 then

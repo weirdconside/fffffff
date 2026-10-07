@@ -15,6 +15,8 @@
 --    anyone (the old bots that fell stayed gone for good);
 --  * the Tab list, the planet tracker, the helmet, the trail and the jetpack flames like everyone else's.
 -- Never a real account's name or face outside the Studio-only preview (Config.Bots.StudioPreview), and no paid perks.
+-- (v41) Wanderers (Bots/Wanderer): Config.Bots.Ambient more bots with no base and no Tab-list entry that live on the
+-- island for good - they never leave to make room for a player, and come back at once if they fall off.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -25,11 +27,14 @@ local Animate = require(here:WaitForChild("Animate"))
 local Motor = require(here:WaitForChild("Motor"))
 local Nav = require(here:WaitForChild("Nav"))
 local Brain = require(here:WaitForChild("Brain"))
+local Wanderer = require(here:WaitForChild("Wanderer"))
 local ctx, Config, ModelUtil
 local rng = Random.new()
 local preview = false     -- Studio-only look-preview (Config.Bots.StudioPreview): see Bots.Init
 
-local bots = {}          -- the bot records
+local bots = {}          -- the bot records (the ones with a base, in the Tab list)
+local wanderers = {}     -- (v41) the island's wanderers: no base, not in the Tab list, never leave
+local LISTS = {bots, wanderers}
 local byId = {}
 local nextId = 1
 local folder, trackerFolder, toolStore
@@ -157,6 +162,7 @@ local function hide(bot)
 	if bot.Motor then bot.Motor:Stop() end
 end
 local function spawnPoint(bot)
+	if bot.Wanderer then return Wanderer.SpawnPoint(bot) end
 	local spawnPart = bot.P.Base and bot.P.Base:FindFirstChild("Spawn")
 	local p = spawnPart and spawnPart.Position or (bot.P.Base and bot.P.Base:GetPivot().Position) or Vector3.new(0, 80, 0)
 	-- the base's SpawnLocation, like a player's respawn (a little scatter so two never stack)
@@ -338,6 +344,19 @@ function Bots.Swing(bot, target)
 	return true
 end
 
+-- (v41) a swing at a thing - a crystal, a rock, a chest, the boss (PlanetLife.BotSmash: the reach and the hit)
+function Bots.SwingAt(bot, model)
+	local tool = bot.Tools and bot.Tools.Bat
+	if not tool or tool.Parent ~= bot.Model or bot.Dead then return false end
+	local now = os.clock()
+	if now - (lastSwing[bot] or 0) < Config.Bat.Cooldown then return false end
+	lastSwing[bot] = now
+	local message = Instance.new("StringValue"); message.Name = "toolanim"; message.Value = "Slash"; message.Parent = tool
+	task.delay(0.3, function() if message.Parent then message:Destroy() end end)
+	if bot.P.Stolen or (bot.P.Expedition and bot.P.Expedition.CarryingEgg) or not ctx.PlanetLife or not ctx.PlanetLife.BotSmash then return false end
+	return ctx.PlanetLife.BotSmash(bot.P, model)
+end
+
 -- the raygun at an alien (Aliens.BotShoot: the hit and the green bolt everyone on the planet sees)
 function Bots.Shoot(bot, aim)
 	local gun = bot.Tools and bot.Tools.Raygun
@@ -511,6 +530,44 @@ local function spawnBot()
 	return bot
 end
 
+-- (v41) a wanderer: a body, the bat and the raygun, a made-up name - no base, no Tab-list entry, no pen
+local function spawnWanderer()
+	local persona = Looks.Persona()
+	persona.Tier = math.clamp(persona.Tier, 2, 5)
+	local name = Looks.Name()
+	for _ = 1, 5 do if not usedNames[name] then break end; name = Looks.Name() end
+	local bot = {Id = nextId, Name = name, Persona = persona, Tools = {}, Grudges = {}, Seen = {}, Shown = false, Wanderer = true}
+	nextId += 1
+	bot.DisplayName = Looks.DisplayName(name)
+	bot.AnimSet, bot.AnimPack = Looks.Animations()
+	usedNames[bot.Name] = true
+	bot.Description = Looks.Describe()
+	local data = ctx.Data.Default()
+	local t = TIERS[persona.Tier] or TIERS[2]
+	data.SuitLevel = math.min(#Config.Suits, t[1])
+	data.JetpackLevel = math.min(#Config.Jetpacks, t[4])
+	data.SpeedPower = math.floor(10 ^ between(t[6][1], t[6][2]))
+	data.TutorialStep = 8
+	local trail = TRAIL_ORDER[math.clamp(persona.Tier + rng:NextInteger(-1, 1), 1, #TRAIL_ORDER)]
+	if trail ~= "" and Config.Trails[trail] and rng:NextNumber() < 0.5 then data.Trails[trail] = true; data.Trail = trail end
+	local fake = setmetatable({UserId = -bot.Id, Name = bot.Name, DisplayName = bot.DisplayName, Character = nil, Attributes = {},
+		IsBot = true, Bot = bot}, Fake)
+	local P = {IsBot = true, Wanderer = true, Bot = bot, Player = fake, Data = data, Base = nil, Planet = "Base", Busy = false,
+		Passes = {}, ShieldUntil = 0, Oxygen = 60, FlightToken = 0, LastAction = 0, Dirty = false, Sprinting = false, JoinedAt = os.time()}
+	bot.P = P
+	bot.UserId = fake.UserId
+	if not makeBody(bot) then usedNames[bot.Name] = nil; return nil end
+	makeTools(bot)
+	byId[bot.Id] = bot
+	P.Oxygen = ctx.maxOxygen(P)
+	bot.Motor = Motor.new(bot, {Config = Config, Nav = Nav, Watched = function(b) return Brain.Watched(b.P.Planet) end})
+	place(bot, spawnPoint(bot))
+	pcall(ctx.Speed.ApplyTrail, P)
+	table.insert(wanderers, bot)
+	task.spawn(Wanderer.Run, bot)
+	return bot
+end
+
 -- a real player needs a base: a bot leaves (called before the server hands out bases). The one with the least going on
 -- goes: not carrying anything, not in the air, at home.
 local function leaveOne()
@@ -535,6 +592,8 @@ function Bots.Kill(bot, reason)
 	bot.Dead = true
 	bot.Interrupt = nil
 	local P = bot.P
+	-- (v41) ran out of air out there: it learns to turn back sooner (Brain's explore)
+	if Config.Planets[P.Planet] and (P.Oxygen or 1) <= 0 then bot.AirLessons = (bot.AirLessons or 0) + 1 end
 	pcall(function() if P.Stolen then ctx.Bases.CancelSteal(P, "knocked out") end end)
 	pcall(function() if P.Minigame and ctx.Minigame and ctx.Minigame.LeaveBot then ctx.Minigame.LeaveBot(P, "left") end end)
 	pcall(function()
@@ -594,6 +653,13 @@ B.Place, B.Hide, B.SpawnPoint, B.Publish = place, hide, spawnPoint, publish
 B.Equip, B.Unequip, B.Swing, B.Shoot, B.Knock = Bots.Equip, Bots.Unequip, Bots.Swing, Bots.Shoot, knock
 B.Kill = function(bot, reason) Bots.Kill(bot, reason) end
 function B.List() return bots end
+function B.Wanderers() return wanderers end
+-- (v41) every bot on the server: the ones with a base and the wanderers
+function B.All()
+	local list = table.clone(bots)
+	for _, w in ipairs(wanderers) do table.insert(list, w) end
+	return list
+end
 function B.ById(id) return byId[id] end
 function B.Alive(bot) return not bot.Gone and not bot.Dead and bot.Model ~= nil and bot.Model.Parent ~= nil end
 
@@ -601,6 +667,10 @@ function B.Alive(bot) return not bot.Gone and not bot.Dead and bot.Model ~= nil 
 function Bots.DevSpawn()
 	if not folder then folder = Instance.new("Folder"); folder.Name = "PFE_Bots"; folder.Parent = workspace end
 	return spawnBot()
+end
+function Bots.DevSpawnWanderer()
+	if not folder then folder = Instance.new("Folder"); folder.Name = "PFE_Bots"; folder.Parent = workspace end
+	return spawnWanderer()
 end
 function Bots.DevClear()
 	for i = #bots, 1, -1 do despawn(bots[i], "clear") end
@@ -616,6 +686,7 @@ function Bots.DevContext() return ctx end
 -- ---------------------------------------------------------------- hooks for the rest of the game
 function Bots.Count() return #bots end
 function Bots.List() return bots end
+function Bots.Wanderers() return wanderers end
 function Bots.Profiles()
 	local list = {}
 	for _, bot in ipairs(bots) do if not bot.Gone then table.insert(list, bot.P) end end
@@ -628,6 +699,16 @@ function Bots.OnRobbed(owner, thief)
 	-- (v36) and the bots around may go after the thief as well
 	for _, other in ipairs(bots) do
 		if other ~= bot and not other.Gone and other.P ~= thief then pcall(Brain.OnThief, other, thief) end
+	end
+	-- (v41) the wanderers catch thieves too (the egg flies back to its pen: they have no pen to take it to)
+	for _, other in ipairs(wanderers) do
+		if not other.Gone and other.P ~= thief then pcall(Wanderer.OnThief, other, thief) end
+	end
+end
+-- (v41) a boss woke up / the Golden Egg appeared on `planetId`: the bots at home hear the news too (Brain: who goes)
+function Bots.OnRally(planetId, kind)
+	for _, bot in ipairs(bots) do
+		if not bot.Gone and not bot.Dead then pcall(Brain.OnRally, bot, planetId, kind) end
 	end
 end
 -- the Meteor Run took this bot along / ended for it
@@ -659,7 +740,9 @@ function Bots.Init(context)
 	trackerFolder = Instance.new("Folder"); trackerFolder.Name = "BotTracker"; trackerFolder.Parent = ctx.network
 	toolStore = Instance.new("Folder"); toolStore.Name = "PFE_BotTools"; toolStore.Parent = game:GetService("ServerStorage")
 	B.ctx, B.Config, B.ModelUtil = ctx, Config, ModelUtil
+	B.SwingAt = Bots.SwingAt
 	Brain.Init(B)
+	Wanderer.Init(B, Brain)
 	-- the island's lowest walkable height: falling below it means falling off
 	do
 		local island = ctx.world:FindFirstChild("OriginalIsland")
@@ -674,13 +757,15 @@ function Bots.Init(context)
 	RunService.Heartbeat:Connect(function(dt)
 		animClock += dt
 		local animate = animClock >= 1 / 30
-		for _, bot in ipairs(bots) do
-			if bot.Shown and not bot.Dead and bot.Model and bot.Model.Parent then
-				local ok, err = pcall(bot.Motor.Step, bot.Motor, dt)
-				if not ok and not bot.Warned then bot.Warned = true; warn("[PFE] bot motor " .. bot.Name .. ": " .. tostring(err)) end
-				if animate and bot.Animate then
-					local okA, errA = pcall(bot.Animate.Step, bot.Animate, animClock)
-					if not okA and not bot.WarnedA then bot.WarnedA = true; warn("[PFE] bot animate " .. bot.Name .. ": " .. tostring(errA)) end
+		for _, list in ipairs(LISTS) do
+			for _, bot in ipairs(list) do
+				if bot.Shown and not bot.Dead and bot.Model and bot.Model.Parent then
+					local ok, err = pcall(bot.Motor.Step, bot.Motor, dt)
+					if not ok and not bot.Warned then bot.Warned = true; warn("[PFE] bot motor " .. bot.Name .. ": " .. tostring(err)) end
+					if animate and bot.Animate then
+						local okA, errA = pcall(bot.Animate.Step, bot.Animate, animClock)
+						if not okA and not bot.WarnedA then bot.WarnedA = true; warn("[PFE] bot animate " .. bot.Name .. ": " .. tostring(errA)) end
+					end
 				end
 			end
 		end
@@ -693,20 +778,37 @@ function Bots.Init(context)
 		local half = false
 		while true do
 			task.wait(0.5)
-			for _, bot in ipairs(table.clone(bots)) do pcall(watchdog, bot) end
+			for _, list in ipairs(LISTS) do
+				for _, bot in ipairs(table.clone(list)) do pcall(watchdog, bot) end
+			end
 			half = not half
 			if half then continue end
 			local now = os.clock()
 			local dt = math.min(2, now - previous)
 			previous = now
-			for _, bot in ipairs(table.clone(bots)) do
-				local ok, err = pcall(Brain.Tick1, bot, dt)
-				if not ok then warn("[PFE] bot tick " .. bot.Name .. ": " .. tostring(err)) end
+			for _, list in ipairs(LISTS) do
+				for _, bot in ipairs(table.clone(list)) do
+					local ok, err = pcall(Brain.Tick1, bot, dt)
+					if not ok then warn("[PFE] bot tick " .. bot.Name .. ": " .. tostring(err)) end
+				end
 			end
 		end
 	end)
 	if not (Config.Bots and Config.Bots.Enabled) then return end
 	folder = Instance.new("Folder"); folder.Name = "PFE_Bots"; folder.Parent = workspace
+	-- (v41) the wanderers: on the island from the start, for good (one comes back if one is ever lost)
+	task.spawn(function()
+		task.wait(2)
+		while true do
+			if #wanderers < (Config.Bots.Ambient or 0) then
+				local ok, err = pcall(spawnWanderer)
+				if not ok then warn("[PFE] wanderer spawn failed: " .. tostring(err)) end
+				task.wait(rng:NextNumber(0.5, 2))
+			else
+				task.wait(5)
+			end
+		end
+	end)
 	task.spawn(function()
 		task.wait(3)
 		while true do

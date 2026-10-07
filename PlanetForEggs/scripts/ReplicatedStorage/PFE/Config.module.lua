@@ -73,6 +73,9 @@ Config.NearEggs = {Min = 5, Radius = 150, Inner = 30, Every = 1, PerTick = 2, Cl
 -- their own pen, bat people, go to the planets and the Meteor Run (Bots/Brain.lua)
 Config.Bots = {Enabled = true, Capacity = 9, Max = 8, JoinDelay = {2, 7},
 	StealFromPlayers = true, PlayerStealCooldown = 240,
+	-- (v41) wanderers: this many more bots with no base and no Tab-list entry that live on the island for good (strolling,
+	-- jogging, watching people and the Meteor Run, catching thieves, horsing about); they never leave to make room
+	Ambient = 4,
 	-- (v32) STUDIO-ONLY look-preview: in Studio's Play the bots borrow these usernames and those accounts' avatars, have no
 	-- robot icon and show in a Tab list. A published server never does this (RunService:IsStudio() is false there):
 	-- live bots keep made-up names and the icon, so nobody is passed off as a real person or a real player.
@@ -196,10 +199,14 @@ function Config.DungeonSites(planetId)
 	end
 	return list
 end
--- clearings the planet generator keeps free of decor: {x, z, radius}
+-- clearings the planet generator keeps free of decor: {x, z, radius} (v41: the cave mouths too)
 function Config.DungeonClearings(planetId)
 	local list = {}
 	for _, site in ipairs(Config.DungeonSites(planetId)) do table.insert(list, {site.X, site.Z, site.Clear}) end
+	local ok, Life = pcall(require, script.Parent:WaitForChild("LifeConfig"))
+	if ok and Life and Life.CaveSites then
+		for _, site in ipairs(Life.CaveSites(planetId)) do table.insert(list, {site.X, site.Z, site.Clear}) end
+	end
 	return list
 end
 
@@ -681,10 +688,18 @@ for _, j in ipairs(ContentData.Jetpacks or {}) do
 end
 Config.Events = {}
 Config.EventList = {}
-for _, e in ipairs(ContentData.Events or {}) do
-	local entry = {Id = e.Id, Name = e.Name, Duration = e.Duration, Color = rgb(e.Color), Buff = e.Buff}
-	Config.Events[e.Id] = entry
-	table.insert(Config.EventList, entry)
+local extraEvents = {}
+do
+	-- (v41) the new world events (Treasure Comet, Coin Rain, Egg Tornado) join the rotation
+	local ok, Life = pcall(require, script.Parent:WaitForChild("LifeConfig"))
+	if ok and Life and Life.ExtraEvents then extraEvents = Life.ExtraEvents end
+end
+for _, list in ipairs({ContentData.Events or {}, extraEvents}) do
+	for _, e in ipairs(list) do
+		local entry = {Id = e.Id, Name = e.Name, Duration = e.Duration, Color = rgb(e.Color), Buff = e.Buff}
+		Config.Events[e.Id] = entry
+		table.insert(Config.EventList, entry)
+	end
 end
 
 Config.GamePasses = {}

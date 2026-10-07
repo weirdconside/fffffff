@@ -10,6 +10,13 @@
 --    carry them to the rocket, knock eggs out of other people's hands, shoot aliens with the raygun, watch its air
 --    and go home in time - mostly; on a planet nobody watches it explores out of sight and turns up when someone lands;
 --  * the Meteor Run: into the circle when the invitation comes, then jetpack up to the meteors and grab their eggs.
+--  * (v41) the living planets: out of the red circles (meteors, lightning, bombs, a boss's slam - the good players nearly
+--    always, the others not always), under a campfire / mushroom / shade rock when the weather wants it, the planet boss
+--    (some with the bat, some from afar with the raygun), the Golden Egg race (grab it, run it to the rocket, bat it out of
+--    the carrier's hands), crystals / rocks / ice blocks / volcanic bombs smashed for the eggs inside; flying out to the
+--    boss's or the Golden Egg's planet when somebody is there; learning (more air to spare after running out once,
+--    revenge on whoever robbed it, guarding its pen after a theft);
+--  * (v41) the island: guarding its pen, hanging out next to people, tagging along behind somebody, watching the Meteor Run.
 local Brain = {}
 local B, ctx, Config
 local rng = Random.new()
@@ -59,7 +66,7 @@ local function people(planetId, except)
 			if r then table.insert(list, {Profile = profile, Root = r, Human = true}) end
 		end
 	end
-	for _, other in ipairs(B.List()) do
+	for _, other in ipairs(B.All()) do
 		if other ~= except and not other.Gone and not other.Dead and other.Shown and other.P.Planet == planetId and not other.P.Busy then
 			local r = B.Root(other)
 			if r then table.insert(list, {Profile = other.P, Root = r, Bot = other}) end
@@ -74,6 +81,25 @@ end
 local function myRoot(bot) return B.Root(bot) end
 local function speedOf(bot) return bot.Humanoid and bot.Humanoid.WalkSpeed or 20 end
 
+-- (v41) is it standing where something is about to land (a meteor's red circle, a boss's slam, a hazard patch)? A bot
+-- notices a given circle or not (the better players nearly always do) - decided once per circle
+local function sensesDanger(bot)
+	local L = ctx.PlanetLife
+	local r = myRoot(bot)
+	if not L or not L.Danger or not r or not bot.Shown or bot.P.Planet == "Base" then return nil end
+	local thing, radius = L.Danger(bot.P.Planet, r.Position, 2 + bot.Persona.Skill * 3)
+	if not thing then return nil end
+	bot.Noticed = bot.Noticed or setmetatable({}, {__mode = "k"})
+	local seen = bot.Noticed[thing]
+	if seen == nil then
+		seen = chance(0.3 + bot.Persona.Skill * 0.65)
+		bot.Noticed[thing] = seen
+	end
+	if not seen then return nil end
+	return thing, radius
+end
+
+local dodge
 -- waiting, walking: false when something more important came up
 local function wait(bot, seconds, hard)
 	local t0 = now()
@@ -93,12 +119,37 @@ local function goTo(bot, target, opts)
 		opts.Timeout = d / math.max(8, speedOf(bot)) * 2.2 + 6
 	end
 	local goal = bot.Motor:GoTo(target, opts)
+	local checkAt = 0
 	while not goal.Done do
 		if bot.Gone or bot.Dead or (bot.Interrupt and not opts.Hard) then bot.Motor:Cancel(goal); return false end
 		if opts.Until and opts.Until() then bot.Motor:Cancel(goal); return true end
+		-- (v41) something about to land on it out there: drop everything (the explore loop gets it out of the way)
+		if not opts.NoDodge and now() >= checkAt and bot.P.Planet ~= "Base" then
+			checkAt = now() + 0.25
+			if sensesDanger(bot) then
+				bot.Motor:Cancel(goal)
+				dodge(bot)
+				return false
+			end
+		end
 		task.wait(0.05)
 	end
 	return goal.Result == "Reached"
+end
+-- (v41) out of the red circle: away from its middle, swerving a little, a jump now and then
+function dodge(bot)
+	local thing, radius = sensesDanger(bot)
+	local r = myRoot(bot)
+	if not thing or not r then return false end
+	count("Dodged")
+	local away = flat(r.Position - thing.Position)
+	away = away.Magnitude > 0.5 and away.Unit or B.Motor.DirOf(between(-math.pi, math.pi))
+	local a = math.rad(between(-35, 35))
+	away = Vector3.new(away.X * math.cos(a) - away.Z * math.sin(a), 0, away.X * math.sin(a) + away.Z * math.cos(a))
+	local out = thing.Position + away * (radius + between(4, 9))
+	if bot.Humanoid and chance(0.35) then bot.Humanoid.Jump = true end
+	goTo(bot, Vector3.new(out.X, r.Position.Y, out.Z), {Near = 3, Timeout = 2.5, Hard = true, NoDodge = true, Path = false})
+	return true
 end
 -- turn round on the spot: shift lock users just look, everyone else taps a key
 local function face(bot, point)
@@ -327,6 +378,9 @@ local function stealPlan(bot)
 								local d = flat(point - r.Position).Magnitude
 								local score = eggValue(egg) * (1 - risk * 0.75) / (1 + d / 250) * between(0.7, 1.3)
 								if human then score *= 0.8 end
+								-- (v41) payback: whoever robbed it lately is the first it robs
+								local robbedBy = bot.RobbedBy and bot.RobbedBy[owner]
+								if robbedBy and t - robbedBy < 600 then score *= 2.5 end
 								if not bestScore or score > bestScore then best, bestScore = {Owner = owner, Egg = egg, Point = point}, score end
 							end
 						end
@@ -639,6 +693,18 @@ local function fly(bot, to)
 end
 Brain.Fly = fly
 
+-- (v41) where the action is: the boss's / the Golden Egg's planet - if its rocket reaches and somebody's there to see it
+local function hotPlanet(bot)
+	local L = ctx.PlanetLife
+	if not L then return nil end
+	local range = Config.Rockets[bot.P.Data.RocketLevel] and Config.Rockets[bot.P.Data.RocketLevel].Range or 1
+	local function ok(id) return Config.Planets[id] ~= nil and (Config.Planets[id].RequiredRange or 0) <= range and Brain.Watched(id) end
+	local b = L.Bosses and L.Bosses.Current()
+	if b and not b.Dead and ok(b.Planet) and (bot.Persona.Aggression > 0.25 or bot.Persona.Skill > 0.6) then return b.Planet end
+	local race = L.GoldenRace and L.GoldenRace.Current()
+	if race and ok(race.Planet) and bot.Persona.Greed > 0.35 then return race.Planet end
+	return nil
+end
 -- where to: within the rocket's reach, mostly where the people are
 local function choosePlanet(bot)
 	local P = bot.P
@@ -648,6 +714,8 @@ local function choosePlanet(bot)
 		if planet.RequiredRange <= range then table.insert(list, planet.Id) end
 	end
 	if #list == 0 then return nil end
+	local hot = hotPlanet(bot)
+	if hot and chance(0.8) then return hot end
 	local crowded = {}
 	for _, profile in pairs(ctx.profiles) do
 		if Config.Planets[profile.Planet] and table.find(list, profile.Planet) then table.insert(crowded, profile.Planet) end
@@ -657,9 +725,9 @@ local function choosePlanet(bot)
 	local pickFrom = math.max(1, #list - rng:NextInteger(0, 2))
 	return list[rng:NextInteger(math.max(1, pickFrom - 1), #list)]
 end
-local function trip(bot)
+local function trip(bot, destination)
 	local P = bot.P
-	local planetId = choosePlanet(bot)
+	local planetId = destination or choosePlanet(bot)
 	local launch = P.Base:FindFirstChild("Launch")
 	if not planetId or not launch then return end
 	if not goTo(bot, launch.Position + Vector3.new(0, 1, 0), {Near = 5}) then return end
@@ -688,7 +756,13 @@ local function airLow(bot)
 	local d = (deck and r and bot.Shown) and flat(deck.Position - r.Position).Magnitude or 120
 	local seconds = d / math.max(10, speedOf(bot)) + 5
 	local margin = bot.AirMargin or 1.3
-	return P.Oxygen <= seconds * planet.OxygenMultiplier * margin + 6
+	-- (v41) the weather eats air faster (sandstorm, blizzard...): the ones who can judge it count it in
+	local weather = 1
+	if ctx.AirMultiplier and bot.Persona.Skill > 0.3 then
+		local ok, m = pcall(ctx.AirMultiplier, P)
+		if ok and type(m) == "number" then weather = math.max(1, m) end
+	end
+	return P.Oxygen <= seconds * planet.OxygenMultiplier * weather * margin + 6
 end
 local function pickEgg(bot, planetId)
 	local r = myRoot(bot)
@@ -767,7 +841,9 @@ local function loadAtRocket(bot)
 	local P = bot.P
 	local deck = deckOf(P.Planet)
 	if not deck then return end
-	goTo(bot, function() return deck.Position + Vector3.new(0, 4, 0) end, {Near = 9, Jet = true, Timeout = 80})
+	-- (v41) with THE GOLDEN EGG everybody is after it: zig-zag (the better ones)
+	local golden = P.Expedition and P.Expedition.CarryingEgg and P.Expedition.CarryingEgg.GoldenRace
+	goTo(bot, function() return deck.Position + Vector3.new(0, 4, 0) end, {Near = 9, Jet = true, Timeout = 80, Evade = golden and bot.Persona.Skill > 0.35 or nil})
 	-- standing on the pad loads it (Expeditions.Tick, like a player)
 	local t0 = now()
 	while P.Expedition and P.Expedition.CarryingEgg and now() - t0 < 2.5 do
@@ -788,8 +864,13 @@ local function flyHome(bot)
 		P.Expedition.CarryingEgg = nil
 	end
 	if P.Expedition and P.Expedition.CarryingEgg then
-		ctx.Expeditions.ClearCarry(P)
-		P.Expedition.CarryingEgg = nil
+		if P.Expedition.CarryingEgg.GoldenRace and bot.Shown then
+			-- (v41) never home with the race's egg unloaded: it falls where it stood
+			pcall(ctx.Expeditions.DropCarry, P)
+		else
+			ctx.Expeditions.ClearCarry(P)
+		end
+		if P.Expedition then P.Expedition.CarryingEgg = nil end
 	end
 	for item, b in pairs(claimed) do if b == bot then claimed[item] = nil end end
 	fly(bot, "Base")
@@ -805,6 +886,212 @@ local function exploreUnseen(bot, planetId)
 	end
 	task.wait(1)
 end
+-- ---------------------------------------------------------------- (v41) the living planets
+local smashing = {}       -- a crystal / rock / chest -> the bot breaking it (two don't crowd one)
+local function lifeOf() return ctx.PlanetLife end
+local function bossOn(planetId)
+	local L = lifeOf()
+	local b = L and L.Bosses and L.Bosses.Current()
+	if b and not b.Dead and (not planetId or b.Planet == planetId) then return b end
+	return nil
+end
+local function goldenOn(planetId)
+	local L = lifeOf()
+	local race = L and L.GoldenRace and L.GoldenRace.Current()
+	if race and (not planetId or race.Planet == planetId) then return race end
+	return nil
+end
+-- the Golden Egg race: does this bot go for it? (decided once a race; a few seconds to notice; never more than 3 at once)
+local function goldenHunter(bot, race)
+	if bot.GoldenFor ~= race then
+		bot.GoldenFor = race
+		local rallied = bot.Rallied and bot.Rallied.For == "Golden" and bot.Rallied.Planet == race.Planet
+		bot.GoldenWish = rallied or chance(0.3 + bot.Persona.Greed * 0.45)
+		bot.GoldenAfter = (race.StartedAt or 0) + between(5, 16) * (1.3 - bot.Persona.Skill * 0.5)
+	end
+	if not bot.GoldenWish or workspace:GetServerTimeNow() < bot.GoldenAfter then return false end
+	local hunters = 0
+	for _, other in ipairs(B.List()) do if other ~= bot and other.GoldenHunting == race then hunters += 1 end end
+	return hunters < 3
+end
+local function goldenHunt(bot, race)
+	local P = bot.P
+	count("Golden")
+	bot.GoldenHunting = race
+	local t0 = now()
+	while now() - t0 < 150 and not bot.Gone and not bot.Dead and bot.Shown and not P.Busy and goldenOn(P.Planet) == race do
+		if airLow(bot) or (bot.Interrupt and bot.Interrupt.Kind ~= "Hit") then break end
+		if P.Expedition and P.Expedition.CarryingEgg then break end   -- got it: explore's loop runs it to the rocket
+		if dodge(bot) then continue end
+		local carrier = race.Carrier
+		if carrier and carrier ~= P then
+			-- bat it out of their hands (it falls, or lands in this bot's)
+			local who = entityOf(carrier)
+			if not who or not rootOf(carrier) or carrier.Planet ~= P.Planet then
+				wait(bot, 0.5)
+			else
+				chaseAndHit(bot, who, between(4, 8), function() return race.Carrier == carrier and goldenOn(P.Planet) == race end)
+				bot.Motor:SetShiftLock(false)
+			end
+		elseif race.Item and race.Item.Parent then
+			local item = race.Item
+			local proxy = item:FindFirstChild("Pickup")
+			if not proxy then break end
+			B.Unequip(bot)
+			goTo(bot, function() return item.Parent and proxy.Position or nil end, {Near = 4.5, Jet = true, Hard = true})
+			local r = myRoot(bot)
+			if item.Parent and r and (proxy.Position - r.Position).Magnitude < 12 then
+				if wait(bot, 0.25 + bot.Persona.Reaction * 0.4, true) and item.Parent and ctx.Expeditions.BotPickup(P, item) then count("GoldenPickup") end
+			end
+		else
+			wait(bot, 0.5)
+		end
+		if bot.Interrupt and bot.Interrupt.Kind == "Hit" then bot.Interrupt = nil end
+	end
+	bot.GoldenHunting = nil
+end
+-- the boss: everybody's fight. Some go in with the bat, the rest keep their distance and shoot
+local function fightBoss(bot, b)
+	local P = bot.P
+	count("Boss")
+	if bot.Ranged == nil then bot.Ranged = chance(0.45) end
+	local fight = between(25, 70) * (0.6 + bot.Persona.Aggression * 0.8)
+	local stopAt = now() + fight
+	local giveUp = now() + fight + 120     -- (the walk over there doesn't count - up to a point)
+	bot.Motor:SetShiftLock(bot.Persona.ShiftLock)
+	while now() < stopAt and now() < giveUp and bossOn(P.Planet) == b and not bot.Gone and not bot.Dead and bot.Shown and not P.Busy do
+		if airLow(bot) or (P.Expedition and P.Expedition.CarryingEgg) then break end
+		if bot.Interrupt and bot.Interrupt.Kind ~= "Hit" then break end
+		bot.Interrupt = nil
+		if dodge(bot) then continue end
+		local r = myRoot(bot)
+		if not r or not b.Hitbox or not b.Hitbox.Parent then break end
+		local centre = b.Hitbox.Position
+		local d = flat(centre - r.Position).Magnitude
+		local reach = math.max(b.Size.X, b.Size.Z) * 0.55
+		bot.Motor.LookAt = d < 150 and function() return b.Hitbox.Position end or nil
+		if d > reach + 90 then
+			-- still on the way there
+			stopAt = math.max(stopAt, now() + fight * 0.5)
+			goTo(bot, function() return b.Hitbox.Parent and b.Hitbox.Position or nil end, {Near = reach + 60, Timeout = 6, Jet = true})
+		elseif b.Under or workspace:GetServerTimeNow() < (b.WakeAt or 0) then
+			-- underground / still getting up: keep away and wait for it
+			if d < reach + 14 then
+				local away = flat(r.Position - centre)
+				away = away.Magnitude > 0.5 and away.Unit or Vector3.new(1, 0, 0)
+				local spot = centre + away * (reach + between(20, 34))
+				goTo(bot, Vector3.new(spot.X, r.Position.Y, spot.Z), {Near = 4, Timeout = 2.5, Path = false})
+			else
+				wait(bot, between(0.3, 0.7))
+			end
+		elseif bot.Ranged then
+			-- the raygun from 25-55 studs out, circling a bit
+			if d > reach + 60 or d < reach + 16 then
+				local away = flat(r.Position - centre)
+				away = away.Magnitude > 0.5 and away.Unit or Vector3.new(1, 0, 0)
+				local a = math.rad(between(-40, 40))
+				away = Vector3.new(away.X * math.cos(a) - away.Z * math.sin(a), 0, away.X * math.sin(a) + away.Z * math.cos(a))
+				local spot = centre + away * (reach + between(25, 50))
+				goTo(bot, Vector3.new(spot.X, r.Position.Y, spot.Z), {Near = 5, Timeout = 3, Jet = d > 120, Path = false})
+			elseif B.Equip(bot, "Raygun") then
+				face(bot, centre)
+				local miss = (1 - bot.Persona.Skill) * 6
+				if B.Shoot(bot, centre + Vector3.new(between(-miss, miss), between(-1, b.Size.Y * 0.3), between(-miss, miss))) then count("BossShot") end
+				wait(bot, between(0.25, 0.55))
+			else
+				wait(bot, 0.3)
+			end
+		else
+			-- the bat: right up to it, a few swings, back off now and then
+			B.Equip(bot, "Bat")
+			if d > reach + Config.Bat.Range - 1 then
+				goTo(bot, function() return b.Hitbox.Parent and b.Hitbox.Position or nil end,
+					{Near = reach + Config.Bat.Range - 2.5, Timeout = 2.5, Hard = true, Jet = d > 120, Path = false})
+			else
+				face(bot, centre)
+				if B.SwingAt(bot, b.Model) then count("BossHit") end
+				wait(bot, between(0.12, 0.35))
+				if chance(0.08 + (1 - bot.Persona.Aggression) * 0.1) then flee(bot, centre) end
+			end
+		end
+	end
+	bot.Motor.LookAt = nil
+	bot.Motor:SetShiftLock(false)
+	if chance(0.6) then B.Unequip(bot) end
+end
+-- crystals, ore rocks, geodes, frozen eggs, volcanic bombs, chests: bat them open
+local function smashable(bot, radius)
+	local L = lifeOf()
+	local r = myRoot(bot)
+	if not L or not L.ThingsNear or not r then return nil end
+	local best, bestD
+	for _, thing in ipairs(L.ThingsNear(bot.P.Planet, r.Position, radius)) do
+		local br = thing.Breakable
+		local owner = smashing[thing.Model]
+		if br and br.Kind ~= "Wall" and (owner == nil or owner == bot or owner.Gone) then
+			local d = (thing.Center - r.Position).Magnitude
+			if not bestD or d < bestD then best, bestD = thing, d end
+		end
+	end
+	return best
+end
+local function smash(bot, thing)
+	local P = bot.P
+	local model = thing.Model
+	smashing[model] = bot
+	count("Smash")
+	local t0 = now()
+	B.Equip(bot, "Bat")
+	while model.Parent and now() - t0 < 16 and not bot.Gone and not bot.Dead and bot.Shown and not P.Busy do
+		if bot.Interrupt or airLow(bot) then break end
+		if dodge(bot) then continue end
+		local r = myRoot(bot)
+		if not r then break end
+		local c = model.PrimaryPart and model.PrimaryPart.Position or thing.Center
+		local d = (c - r.Position).Magnitude
+		if d > Config.Bat.Range + thing.Radius then
+			goTo(bot, c, {Near = Config.Bat.Range + thing.Radius - 2.5, Timeout = 5, Jet = true})
+		else
+			face(bot, c)
+			B.SwingAt(bot, model)
+			wait(bot, between(0.12, 0.4))
+		end
+	end
+	if smashing[model] == bot then smashing[model] = nil end
+	if not model.Parent then count("Smashed") end
+end
+-- the weather wants shelter (a blizzard's campfire, acid rain's mushroom, a flare's shade rock): in under it for a while,
+-- then out again for the eggs (and back) - the ones who know the planet (decided once a weather)
+local function shelterNeed(bot)
+	local L = lifeOf()
+	local r = myRoot(bot)
+	if not L or not L.ShelterFor or not r then return nil end
+	local _, weatherId = L.Weather(bot.P.Planet)
+	if bot.ShelterWeather ~= weatherId then
+		bot.ShelterWeather = weatherId
+		bot.ShelterWish = chance(0.35 + bot.Persona.Skill * 0.55)
+		bot.ShelterRest = 0
+	end
+	if not bot.ShelterWish or now() < (bot.ShelterRest or 0) then return nil end
+	return L.ShelterFor(bot.P.Planet, r.Position, 170)
+end
+local function takeShelter(bot, shelter)
+	count("Shelter")
+	local a, d = between(0, math.pi * 2), between(0, shelter.Radius * 0.55)
+	local spot = shelter.Position + Vector3.new(math.cos(a) * d, 4, math.sin(a) * d)
+	B.Unequip(bot)
+	if goTo(bot, spot, {Near = 3, Jet = true, Timeout = 20}) then
+		face(bot, shelter.Position)
+		local stay = between(5, 14)
+		local t0 = now()
+		while now() - t0 < stay and not bot.Interrupt do
+			if dodge(bot) then break end
+			if chance(0.15) then fidget(bot) else wait(bot, between(0.5, 1.5)) end
+		end
+	end
+	bot.ShelterRest = now() + between(8, 25)
+end
+
 local function inviteOpen()
 	return ctx.Minigame and ctx.Minigame.InviteOpen and ctx.Minigame.InviteOpen()
 end
@@ -827,7 +1114,8 @@ local function explore(bot)
 	local P = bot.P
 	local planetId = P.Planet
 	local stay = between(80, 240) * (0.7 + bot.Persona.Greed * 0.6)
-	bot.AirMargin = 1.05 + bot.Persona.Skill * 0.7 + between(-0.15, 0.25)
+	-- (it learns: every time it ran out of air out there it turns back a little sooner)
+	bot.AirMargin = 1.05 + bot.Persona.Skill * 0.7 + between(-0.15, 0.25) + math.min(0.9, (bot.AirLessons or 0) * 0.3)
 	local t0 = now()
 	while P.Planet == planetId and not P.Busy and not bot.Gone and not bot.Dead and not P.Minigame do
 		-- someone landed / everyone left
@@ -835,9 +1123,15 @@ local function explore(bot)
 		if watched and not bot.Shown then showOnPlanet(bot)
 		elseif not watched and bot.Shown then
 			if P.Expedition and P.Expedition.CarryingEgg then
-				table.insert(P.Expedition.Eggs, P.Expedition.CarryingEgg)
-				P.Expedition.CarryingEgg = nil
-				ctx.Expeditions.ClearCarry(P)
+				if P.Expedition.CarryingEgg.GoldenRace then
+					-- (v41) the race's egg stays on the planet for the next people there
+					pcall(ctx.Expeditions.DropCarry, P)
+					if P.Expedition then P.Expedition.CarryingEgg = nil end
+				else
+					table.insert(P.Expedition.Eggs, P.Expedition.CarryingEgg)
+					P.Expedition.CarryingEgg = nil
+					ctx.Expeditions.ClearCarry(P)
+				end
 			end
 			B.Unequip(bot)
 			B.Hide(bot)
@@ -847,27 +1141,60 @@ local function explore(bot)
 			if bot.MeteorWish == nil then bot.MeteorWish = chance(0.55 + bot.Persona.Greed * 0.25) end
 			if bot.MeteorWish then return joinRunFromPlanet(bot) end
 		end
-		if cargoFull(P) or airLow(bot) or now() - t0 > stay then return flyHome(bot) end
+		local carrying = P.Expedition and P.Expedition.CarryingEgg
+		-- (the boss / the Golden Egg keep it out there a bit longer)
+		local hot = bossOn(planetId) or goldenOn(planetId)
+		if cargoFull(P) or airLow(bot) or (now() - t0 > stay and not (hot and now() - t0 < stay + 90)) then
+			if not (carrying and carrying.GoldenRace and not airLow(bot) and not cargoFull(P)) then return flyHome(bot) end
+		end
 		if not bot.Shown then
+			bot.Doing = "unseen"
 			exploreUnseen(bot, planetId)
 			continue
 		end
-		local carrying = P.Expedition and P.Expedition.CarryingEgg
+		if dodge(bot) then continue end
 		if carrying then
+			bot.Doing = "load"
 			B.Unequip(bot)
 			loadAtRocket(bot)
 		else
 			local alien = nearAlien(bot, 42)
 			local victim = prey(bot, bot.Persona.Aggression > 0.55 and 90 or 40)
-			if alien and chance(0.35 + bot.Persona.Skill * 0.4) then
+			local boss = bossOn(planetId)
+			if boss and bot.BossFor ~= boss then
+				bot.BossFor = boss
+				-- (it flew out because of the boss: of course it fights)
+				local rallied = bot.Rallied and bot.Rallied.For == "Boss" and bot.Rallied.Planet == planetId
+				bot.BossWish = rallied or chance(0.4 + bot.Persona.Aggression * 0.45 + bot.Persona.Skill * 0.1)
+			end
+			local race = goldenOn(planetId)
+			local shelter = shelterNeed(bot)
+			local r = myRoot(bot)
+			if shelter and r and flat(shelter.Position - r.Position).Magnitude > shelter.Radius - 2 then
+				bot.Doing = "shelter"
+				takeShelter(bot, shelter)
+			elseif race and race.Carrier ~= P and (race.Carrier or (race.Item and race.Item.Parent)) and goldenHunter(bot, race) then
+				bot.Doing = "golden"
+				goldenHunt(bot, race)
+			elseif boss and bot.BossWish and r and flat(boss.Position - r.Position).Magnitude < 1800 then
+				bot.Doing = "boss"
+				fightBoss(bot, boss)
+			elseif alien and chance(0.35 + bot.Persona.Skill * 0.4) then
+				bot.Doing = "alien"
 				shootAlien(bot, alien)
 			elseif victim and chance(bot.Persona.Aggression * 0.9) and canBonk(bot, victim) then
+				bot.Doing = "prey"
 				markBonked(bot, victim)
 				chaseAndHit(bot, victim, between(6, 12), function() return victim.Profile.Expedition ~= nil and victim.Profile.Expedition.CarryingEgg ~= nil and not P.Expedition.CarryingEgg end)
 				bot.Motor:SetShiftLock(false)
 			else
-				local item = pickEgg(bot, planetId)
-				if item then
+				local thing = chance(0.3 + bot.Persona.Greed * 0.5) and smashable(bot, 55 + bot.Persona.Greed * 40) or nil
+				local item = not thing and pickEgg(bot, planetId)
+				if thing then
+					bot.Doing = "smash"
+					smash(bot, thing)
+				elseif item then
+					bot.Doing = "egg"
 					local proxy = item:FindFirstChild("Pickup")
 					goTo(bot, function() return item.Parent and proxy.Position or nil end, {Near = 4.5, Jet = true})
 					local r = myRoot(bot)
@@ -881,6 +1208,7 @@ local function explore(bot)
 					claimed[item] = nil
 				else
 					-- nothing close: off exploring (further out for the greedy ones)
+					bot.Doing = "roam"
 					local r = myRoot(bot)
 					if r then
 						local deck = deckOf(planetId)
@@ -1031,6 +1359,12 @@ function Brain.OnHit(bot, by)
 end
 function Brain.OnRobbed(bot, thief)
 	local P = bot.P
+	-- (v41) it remembers: a while of guarding its pen, and the thief is first in line for payback
+	bot.GuardUntil = now() + between(120, 320)
+	if thief then
+		bot.RobbedBy = bot.RobbedBy or setmetatable({}, {__mode = "k"})
+		bot.RobbedBy[thief] = now()
+	end
 	if P.Busy or bot.Dead or P.Minigame then return end
 	-- (v36) out on a planet the alarm still rings: most fly straight home to get it back
 	if P.Planet ~= "Base" then
@@ -1047,6 +1381,19 @@ function Brain.OnRobbed(bot, thief)
 	task.delay(bot.Persona.Reaction * 0.6 + between(0.1, 0.6), function()
 		if bot.Gone or bot.Dead or not carrierOfMine(bot) then return end
 		bot.Interrupt = {Kind = "Robbed", Thief = thief}
+	end)
+end
+-- (v41) "BOSS!" / "THE GOLDEN EGG!" on the screen: the ones at home who care drop what they're doing and fly out
+-- (if their rocket reaches and somebody's out there - hotPlanet)
+function Brain.OnRally(bot, planetId, kind)
+	local P = bot.P
+	if P.Planet ~= "Base" or P.Busy or P.Stolen or P.Minigame then return end
+	task.delay(bot.Persona.Reaction * 4 + between(0.5, 6), function()
+		if bot.Gone or bot.Dead or bot.Interrupt or P.Planet ~= "Base" or P.Busy or P.Stolen or P.Minigame then return end
+		if hotPlanet(bot) ~= planetId then return end
+		local want = kind == "Boss" and 0.35 + bot.Persona.Aggression * 0.45 or 0.3 + bot.Persona.Greed * 0.45
+		if bot.Afk then want *= 0.5 end
+		if chance(want) then bot.Interrupt = {Kind = "Rally", Planet = planetId, For = kind} end
 	end)
 end
 -- (v36) somebody nearby ran off with an egg from someone else's pen: like players, a bot may bat it out of their hands
@@ -1097,6 +1444,118 @@ local function react(bot, event)
 	elseif kind == "Respawned" then
 		bot.Motor:Reset()
 		wait(bot, between(0.5, 2.5), true)
+	elseif kind == "Rally" then
+		if bot.Treadmill then Brain.LeaveTreadmill(bot) end
+		if bot.P.Planet == "Base" and not bot.P.Busy and not bot.P.Stolen then
+			count("Rally")
+			bot.Rallied = {Planet = event.Planet, For = event.For}
+			trip(bot, event.Planet)
+		end
+	end
+end
+
+-- ---------------------------------------------------------------- (v41) more of island life
+-- someone about the island to be with (a person or a bot; `humansOnly`: people only)
+local function companion(bot, radius, humansOnly)
+	local r = myRoot(bot)
+	if not r then return nil end
+	local list = {}
+	for _, person in ipairs(people("Base", bot)) do
+		local d = (person.Root.Position - r.Position).Magnitude
+		if d < radius and (person.Human or not humansOnly) and not person.Profile.Stolen then table.insert(list, person) end
+	end
+	return #list > 0 and list[rng:NextInteger(1, #list)] or nil
+end
+local function bodyOf(person) return person.Bot and B.Root(person.Bot) or rootOf(person.Profile) end
+-- a few steps from somebody, facing them, a while (the way people stand about together)
+local function hangOut(bot, person)
+	count("Hangout")
+	local function spot()
+		local tr, r = bodyOf(person), myRoot(bot)
+		if not tr or not r then return nil end
+		local off = flat(r.Position - tr.Position)
+		off = off.Magnitude > 0.5 and off.Unit or Vector3.new(1, 0, 0)
+		return tr.Position + off * between(4, 6)
+	end
+	if not goTo(bot, spot, {Near = 3, Timeout = 15}) then return end
+	local t0, stay = now(), between(6, 22)
+	while now() - t0 < stay do
+		local tr, r = bodyOf(person), myRoot(bot)
+		if not tr or not r or person.Profile.Planet ~= "Base" or person.Profile.Busy then break end
+		if (tr.Position - r.Position).Magnitude > 16 then
+			if not goTo(bot, spot, {Near = 4, Timeout = 6}) then return end
+		else
+			face(bot, tr.Position)
+			local roll = rng:NextNumber()
+			if roll < 0.12 and bot.Humanoid then bot.Humanoid.Jump = true end
+			if roll > 0.93 then toolPlay(bot) end
+			if not wait(bot, between(0.8, 2.2)) then return end
+		end
+	end
+end
+-- tag along behind somebody for a while (curious, or a fan)
+local function tagAlong(bot, person)
+	count("Follow")
+	local t0, stay = now(), between(12, 35)
+	local keep = between(7, 13)
+	while now() - t0 < stay and not bot.Gone and not bot.Dead do
+		local tr, r = bodyOf(person), myRoot(bot)
+		if not tr or not r or person.Profile.Planet ~= "Base" or person.Profile.Busy then break end
+		local d = (tr.Position - r.Position).Magnitude
+		if d > keep + 4 then
+			local back = flat(r.Position - tr.Position)
+			back = back.Magnitude > 0.5 and back.Unit or Vector3.new(1, 0, 0)
+			if not goTo(bot, tr.Position + back * keep, {Near = 3, Timeout = 3, Path = d > 40}) then return end
+		else
+			face(bot, tr.Position)
+			if not wait(bot, between(0.3, 0.9)) then return end
+		end
+	end
+	if chance(0.4) then fidget(bot) end
+end
+-- stand watch at its own pen a while (after a theft more than ever): anybody stepping in gets the bat (the bolder ones)
+local function guardPen(bot)
+	local P = bot.P
+	local area = P.Base and P.Base:FindFirstChild("PlantArea")
+	if not area then return end
+	count("Guard")
+	local r = myRoot(bot)
+	local out = r and flat(r.Position - area.Position) or Vector3.new(1, 0, 0)
+	out = out.Magnitude > 1 and out.Unit or Vector3.new(1, 0, 0)
+	local post = area.Position + out * (math.max(area.Size.X, area.Size.Z) * 0.35) + Vector3.new(0, 3, 0)
+	if not goTo(bot, post, {Near = 4}) then return end
+	local t0, stay = now(), between(15, 45) * (now() < (bot.GuardUntil or 0) and 1.8 or 1)
+	local reach = math.max(area.Size.X, area.Size.Z) * 0.5 + 8
+	while now() - t0 < stay do
+		-- somebody at its eggs?
+		for _, person in ipairs(people("Base", bot)) do
+			if person.Profile ~= P and flat(person.Root.Position - area.Position).Magnitude < reach and canBonk(bot, person)
+				and chance(0.25 + bot.Persona.Aggression * 0.6) then
+				count("Guarded")
+				hitAndRun(bot, person)
+				return
+			end
+		end
+		local roll = rng:NextNumber()
+		if roll < 0.35 then face(bot, area.Position + out * between(20, 60) + Vector3.new(between(-30, 30), 0, between(-30, 30)))
+		elseif roll < 0.42 then fidget(bot) end
+		if not wait(bot, between(0.8, 2)) then return end
+	end
+end
+-- the Meteor Run going on without it: over to the circle's edge to watch (and cheer)
+local function spectate(bot)
+	local c = zoneCenter()
+	local MG = Config.Minigame
+	local a = between(0, math.pi * 2)
+	local edge = c + Vector3.new(math.cos(a), 0, math.sin(a)) * ((MG and MG.ZoneRadius or 30) + between(4, 12))
+	local g = ground(edge)
+	if not g or not goTo(bot, g + Vector3.new(0, 3, 0), {Near = 4}) then return end
+	count("Spectate")
+	local t0, stay = now(), between(15, 45)
+	while now() - t0 < stay and ctx.Minigame and ((ctx.Minigame.Current and ctx.Minigame.Current()) or inviteOpen()) do
+		face(bot, c)
+		if chance(0.2) and bot.Humanoid then bot.Humanoid.Jump = true end
+		if not wait(bot, between(1, 3)) then return end
 	end
 end
 
@@ -1143,17 +1602,25 @@ local function island(bot)
 		near = near or list[rng:NextInteger(1, math.max(1, #list))]
 	end
 	local plan = (t >= (bot.StealReady or 0)) and stealPlan(bot) or nil
+	local hot = hotPlanet(bot)
+	local buddy = chance(0.5) and companion(bot, 90) or nil
+	local fan = not buddy and chance(0.3) and companion(bot, 120, true) or nil
+	local runOn = ctx.Minigame and ctx.Minigame.Current and ctx.Minigame.Current() ~= nil and not P.Minigame
 	local options = {
 		{"Steal", plan and (0.25 + persona.Greed * 0.9) or 0},
 		{"Snatch", thief and (0.3 + persona.Aggression * 1.3) or 0},
 		{"Bonk", (near and t >= (bot.BonkReady or 0)) and persona.Aggression * (near.Human and 0.3 or 0.45) or 0},
 		{"Treadmill", 0.3 + (persona.Tier <= 2 and 0.2 or 0)},
-		{"Trip", 0.42},
+		{"Trip", 0.42 + (hot and 0.9 or 0)},
 		{"Wander", 0.32},
 		{"Visit", 0.18},
 		{"Fidget", 0.26},
 		{"AFK", (1 - persona.Focus) * 0.22},
 		{"Shop", t >= (bot.ShopReady or 0) and 0.12 or 0},
+		{"Guard", 0.06 + persona.Aggression * 0.06 + (t < (bot.GuardUntil or 0) and 0.6 or 0)},
+		{"Hangout", buddy and 0.2 or 0},
+		{"Follow", fan and 0.07 or 0},
+		{"Spectate", runOn and 0.7 or 0},
 	}
 	local choice = weighted(options)
 	if choice then count(choice) end
@@ -1202,6 +1669,14 @@ local function island(bot)
 	elseif choice == "Shop" then
 		bot.ShopReady = t + between(60, 200)
 		shop(bot)
+	elseif choice == "Guard" then
+		guardPen(bot)
+	elseif choice == "Hangout" then
+		hangOut(bot, buddy)
+	elseif choice == "Follow" then
+		tagAlong(bot, fan)
+	elseif choice == "Spectate" then
+		spectate(bot)
 	end
 	if not bot.Interrupt then wait(bot, between(0.1, 0.9)) end
 end
@@ -1263,6 +1738,12 @@ end
 Brain.Dev = {GoTo = goTo, Steal = steal, StealPlan = stealPlan, Plant = plantEggs, Hatch = hatchEggs, Defend = defend, RunHome = runHome,
 	Fly = fly, Treadmill = treadmill, MeteorRun = meteorRun, MeteorQueue = meteorQueue, Explore = explore, HitAndRun = hitAndRun,
 	People = people, Fidget = fidget}
+
+-- (v41) the same hands and feet for the wanderers (Bots/Wanderer)
+Brain.H = {wait = wait, goTo = goTo, face = face, fidget = fidget, toolPlay = toolPlay, afk = afk, chaseAndHit = chaseAndHit,
+	flee = flee, hitAndRun = hitAndRun, canBonk = canBonk, markBonked = markBonked, people = people, entityOf = entityOf,
+	rootOf = rootOf, ground = ground, zoneCenter = zoneCenter, inviteOpen = inviteOpen, hangOut = hangOut, tagAlong = tagAlong,
+	spectate = spectate, companion = companion, snatch = snatch, now = now, flat = flat, between = between, chance = chance}
 
 function Brain.Forget(bot)
 	for item, b in pairs(claimed) do if b == bot then claimed[item] = nil end end

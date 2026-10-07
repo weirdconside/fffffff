@@ -127,10 +127,54 @@ local function giveRaygun(profile)
 	if tool then tool.Parent = backpack end
 end
 
+-- (v41) the flashlight everybody carries (the caves are pitch dark): a torch built from parts, its beam a shadow-casting
+-- SpotLight in the lens. Built along the handle's -Z (lens forward) with the grip under it, so its Grip is like the
+-- raygun's computed one: barrel forward, handle down.
+local flashlightTemplate
+local function makeFlashlight()
+	if flashlightTemplate then return flashlightTemplate:Clone() end
+	local tool = Instance.new("Tool")
+	tool.Name = "Flashlight"; tool.CanBeDropped = false; tool.RequiresHandle = true; tool.ToolTip = "Flashlight"
+	tool.TextureId = "rbxassetid://119275771957836"
+	local function piece(name, size, offset, color, material, shape)
+		local p = Instance.new("Part")
+		p.Name = name; p.Size = size; p.Color = color; p.Material = material or Enum.Material.SmoothPlastic
+		if shape then p.Shape = shape end
+		p.CanCollide = false; p.CanTouch = false; p.CanQuery = false; p.Massless = true; p.CastShadow = false
+		p.TopSurface = Enum.SurfaceType.Smooth; p.BottomSurface = Enum.SurfaceType.Smooth
+		p.CFrame = CFrame.new(offset)
+		p.Parent = tool
+		return p
+	end
+	local handle = piece("Handle", Vector3.new(0.62, 0.62, 2.1), Vector3.zero, Color3.fromRGB(40, 44, 56), Enum.Material.Metal)
+	local head = piece("Head", Vector3.new(0.95, 0.95, 0.55), Vector3.new(0, 0, -1.25), Color3.fromRGB(60, 64, 80), Enum.Material.Metal)
+	local lens = piece("Lens", Vector3.new(0.78, 0.78, 0.12), Vector3.new(0, 0, -1.56), Color3.fromRGB(255, 246, 200), Enum.Material.Neon)
+	local band = piece("Band", Vector3.new(0.68, 0.68, 0.18), Vector3.new(0, 0, 0.55), Color3.fromRGB(255, 200, 40), Enum.Material.SmoothPlastic)
+	local grip = piece("Grip", Vector3.new(0.42, 0.75, 0.55), Vector3.new(0, -0.62, 0.35), Color3.fromRGB(26, 26, 30), Enum.Material.Fabric)
+	for _, p in ipairs({head, lens, band, grip}) do
+		local weld = Instance.new("WeldConstraint"); weld.Part0 = handle; weld.Part1 = p; weld.Parent = p
+	end
+	local beam = Instance.new("SpotLight")
+	beam.Name = "Beam"; beam.Face = Enum.NormalId.Front; beam.Angle = 62; beam.Range = 60; beam.Brightness = 3.2
+	beam.Color = Color3.fromRGB(255, 244, 214); beam.Shadows = true; beam.Parent = lens
+	local glow = Instance.new("PointLight")
+	glow.Name = "Glow"; glow.Range = 7; glow.Brightness = 0.6; glow.Color = Color3.fromRGB(255, 240, 200); glow.Shadows = false; glow.Parent = lens
+	tool.Grip = CFrame.new(0, -0.62, 0.35)
+	flashlightTemplate = tool
+	return tool:Clone()
+end
+local function giveFlashlight(profile)
+	local player = profile.Player
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not backpack or backpack:FindFirstChild("Flashlight") or (player.Character and player.Character:FindFirstChild("Flashlight")) then return end
+	makeFlashlight().Parent = backpack
+end
+
 function Gear.OnCharacter(profile)
 	Gear.AttachJetpack(profile)
 	giveBat(profile)
 	giveRaygun(profile)
+	giveFlashlight(profile)
 end
 
 -- a bat swing from `attacker` at the player with `targetUserId`

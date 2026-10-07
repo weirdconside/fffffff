@@ -241,7 +241,7 @@ function Popups.Init(store)
 		local s = math.clamp(UI.scaleFor(camera.ViewportSize), UI.minScale(), 1.2)
 		toastScale.Scale = s
 		local onPlanet = Config.Planets[store.state.Planet] ~= nil
-		toastHolder.Position = UDim2.new(0.5, 0, 0, (onPlanet and 170 or 70) * s)
+		toastHolder.Position = UDim2.new(0.5, 0, 0, (onPlanet and 196 or 70) * s)   -- (v41: under the weather line)
 	end
 	if workspace.CurrentCamera then workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(layout) end
 	store.on(layout)

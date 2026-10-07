@@ -533,7 +533,6 @@ function Expeditions.BotPickup(profile, item)
 	local root = ctx.root(profile.Player)
 	local proxy = item and item:FindFirstChild("Pickup")
 	if not expedition or not root or not proxy or not item.Parent or roomFor(profile) then return false end
-	if item:GetAttribute("GoldenRace") then return false end -- (v41) the Golden Egg is the players' race
 	local pool = pools[item:GetAttribute("Planet") or ""]
 	if pool and (root.Position - pickupPoint(pool, item, proxy)).Magnitude > Config.PickupDistance * (Config.PromptReach or 1) + 4 then return false end
 	local dropped = item:GetAttribute("Dropped") == true

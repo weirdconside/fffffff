@@ -456,8 +456,10 @@ end
 -- can this alien go after this player? (a ship's aliens: its crew; a planet's: explorers off the pad)
 local function fairGame(record, p, troot)
 	if not troot or ctx.profiles[p.Player] ~= p or p.Busy then return false end
+	-- (v41) a cave's aliens go for the explorers in that planet's cave
+	if record.Group and string.sub(record.Group, 1, 5) == "Cave_" then return p.InCave == record.Planet and p.Planet == record.Planet end
 	if record.Group then return p.InDungeon == record.Group end
-	return p.Planet == record.Planet and p.Expedition ~= nil and not p.InDungeon and not inSafeZone(record.Planet, troot.Position)
+	return p.Planet == record.Planet and p.Expedition ~= nil and not p.InDungeon and not p.InCave and not inSafeZone(record.Planet, troot.Position)
 end
 
 -- nothing solid between the alien's eyes and the player (crates, walls, rocks, trees stop its shots)
@@ -511,9 +513,10 @@ local function think(record, explorers)
 	if record.Dead or not root.Parent or humanoid.Health <= 0 then return end
 	local position = root.Position
 	local scale = record.Type.Scale or 1
-	-- aboard a ship the aliens see the whole hall and never give up
-	local aggro = record.Group and A.ShipAggroRange or A.AggroRange * scale
-	local leash = record.Group and math.huge or A.LeashRange * scale
+	-- aboard a ship the aliens see the whole hall and never give up (v41: in a cave they see as far as the dark lets them)
+	local ship = record.Group and string.sub(record.Group, 1, 5) ~= "Cave_"
+	local aggro = ship and A.ShipAggroRange or A.AggroRange * scale
+	local leash = ship and math.huge or (record.Group and 90 or A.LeashRange) * scale
 	local target = record.Target
 	if target then
 		local troot = ctx.root(target.Player)
@@ -634,16 +637,35 @@ local function fire(player, aim)
 	local length = math.min(direction.Magnitude + 6, R.Range)
 	local group = profile.InDungeon and groups[profile.InDungeon]
 	local list = group and group.Aliens or (planets[profile.Planet] and planets[profile.Planet].Aliens) or {}
+	-- (v41) in a cave: its aliens too
+	if not group and profile.InCave then
+		list = table.clone(list)
+		for tag, g in pairs(groups) do
+			if string.sub(tag, 1, 5) == "Cave_" and g.Planet == profile.Planet then
+				for _, r in ipairs(g.Aliens) do table.insert(list, r) end
+			end
+		end
+	end
 	local record, along = alienAlong(list, origin, direction, length)
+	-- (v41) the bosses, crystals, rocks, chests... (PlanetLife) - whichever is first along the bolt
+	local thing, thingAt
+	if not group and ctx.LaserTargets then thing, thingAt = ctx.LaserTargets(profile, origin, direction.Unit, length) end
+	if thing and (not along or thingAt < along) then record = nil; along = thingAt else thing = nil end
 	-- walls, crates and rocks stop the bolt (both ways: the aliens can't shoot through them either)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.RespectCanCollide = true
-	params.FilterDescendantsInstances = folder and {character, folder} or {character}
+	local ignore = {character}
+	if folder then table.insert(ignore, folder) end
+	local life = workspace:FindFirstChild("PFE_PlanetLife")
+	if life then table.insert(ignore, life) end
+	params.FilterDescendantsInstances = ignore
 	local wall = workspace:Raycast(origin, direction.Unit * (along or length), params)
-	if wall then record = nil; along = (wall.Position - origin).Magnitude end
+	if wall then record = nil; thing = nil; along = (wall.Position - origin).Magnitude end
 	local hitPosition = origin + direction.Unit * (along or length)
 	if record then Aliens.Damage(record, R.Damage, profile) end
+	if thing then thing.Hit(R.Damage * ((ctx.Life and ctx.Life.LaserScale) or 1), profile, "Laser") end
+	if thing then record = true end -- (the bolt shows as a hit)
 	local payload = {From = origin, To = hitPosition, Hit = record ~= nil, Shooter = player.UserId}
 	if group then
 		for _, p in ipairs(group.Members()) do if p.Player ~= player then ctx.effect(p.Player, "RaygunShot", payload) end end
@@ -665,17 +687,29 @@ function Aliens.BotShoot(profile, origin, aim)
 	local length = math.min(direction.Magnitude + 6, R.Range)
 	local list = planets[profile.Planet] and planets[profile.Planet].Aliens or {}
 	local record, along = alienAlong(list, origin, direction, length)
+	-- (v41) the bosses, crystals and rocks too (PlanetLife), like a player's bolt (a bot's hit is softer)
+	local thing, thingAt
+	if ctx.LaserTargets then thing, thingAt = ctx.LaserTargets(profile, origin, direction.Unit, length) end
+	if thing and (not along or thingAt < along) then record = nil; along = thingAt else thing = nil end
 	local character = profile.Player.Character
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.RespectCanCollide = true
-	params.FilterDescendantsInstances = folder and {character, folder} or {character}
+	local ignore = {character}
+	if folder then table.insert(ignore, folder) end
+	local life = workspace:FindFirstChild("PFE_PlanetLife")
+	if life then table.insert(ignore, life) end
+	params.FilterDescendantsInstances = ignore
 	local wall = workspace:Raycast(origin, direction.Unit * (along or length), params)
-	if wall then record = nil; along = (wall.Position - origin).Magnitude end
+	if wall then record = nil; thing = nil; along = (wall.Position - origin).Magnitude end
 	local hitPosition = origin + direction.Unit * (along or length)
 	if record then Aliens.Damage(record, R.Damage, nil) end
-	send(profile.Planet, "RaygunShot", {From = origin, To = hitPosition, Hit = record ~= nil, Shooter = profile.Player.UserId})
-	return record ~= nil
+	if thing then
+		local Life = ctx.Life
+		thing.Hit(R.Damage * (Life and Life.LaserScale or 1) * (Life and Life.BotDamage or 0.6), profile, "Laser")
+	end
+	send(profile.Planet, "RaygunShot", {From = origin, To = hitPosition, Hit = record ~= nil or thing ~= nil, Shooter = profile.Player.UserId})
+	return record ~= nil or thing ~= nil
 end
 
 -- ---------------------------------------------------------------- groups (the alien ships' waves)

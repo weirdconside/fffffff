@@ -61,6 +61,40 @@ function Tracker.Init(store)
 		entries[stop.Key] = {Icon = icon, Lock = lock, Stop = stop}
 	end
 
+	-- (v41) the Golden Egg and the planet boss: a marker beside their planet's stop
+	local function badge(name, iconKey, color)
+		local b = UI.icon(holder, iconKey, UDim2.fromOffset(22, 22), UDim2.fromOffset(0, 0), {Name = name, ZIndex = 26, Visible = false,
+			AnchorPoint = Vector2.new(0.5, 0.5), ImageColor3 = color})
+		UI.new("UIStroke", {Thickness = 0}, b)
+		return b
+	end
+	local goldBadge = badge("GoldenEgg", "EggBig", Color3.fromRGB(255, 214, 60))
+	local bossBadge = badge("Boss", "Volcano", Color3.fromRGB(255, 120, 100))
+	bossBadge.Size = UDim2.fromOffset(18, 18)
+	local function planetY(planetId)
+		local key = planetId == "Base" and "Earth" or planetId
+		return ys[key]
+	end
+	RunService.RenderStepped:Connect(function()
+		local t = os.clock()
+		local gold = workspace:GetAttribute("PFEGoldenPlanet")
+		local gy = type(gold) == "string" and gold ~= "" and planetY(gold)
+		goldBadge.Visible = gy ~= nil and gy ~= false
+		if goldBadge.Visible then
+			-- (on the planet's own icon: the bar sits at the right edge of the screen, there is no room beside it)
+			goldBadge.Position = UDim2.fromOffset(BAR_X + BAR / 2 + 6 + ICON / 2 - 6, gy - 8)
+			goldBadge.Rotation = math.sin(t * 4) * 12
+			goldBadge.Size = UDim2.fromOffset(20 + math.sin(t * 6) * 2, 20 + math.sin(t * 6) * 2)
+		end
+		local boss = workspace:GetAttribute("PFEBossPlanet")
+		local by = type(boss) == "string" and boss ~= "" and planetY(boss)
+		bossBadge.Visible = by ~= nil and by ~= false
+		if bossBadge.Visible then
+			bossBadge.Position = UDim2.fromOffset(BAR_X + BAR / 2 + 6 + ICON / 2 + 7, by + 7)
+			bossBadge.ImageTransparency = 0.15 + 0.15 * math.sin(t * 5)
+		end
+	end)
+
 	-- headshots
 	local markers = {}
 	local function addPlayer(other)

@@ -4,6 +4,7 @@
 -- The server checks the hit; the target's own client plays the knockback (their character is
 -- theirs to move), and a thief who gets hit drops the stolen egg.
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local api = game:GetService("ReplicatedStorage"):WaitForChild("PFE")
@@ -82,6 +83,15 @@ local function closest()
 			if d < bestDistance then best, bestDistance = {UserId = -id, Character = bot}, d end
 		end
 	end
+	-- (v41) and everything that can be smashed: crystals, rocks, ice blocks, volcanic bombs, cave walls, chests, the bosses
+	for _, model in ipairs(CollectionService:GetTagged("PFESmashable")) do
+		local core = model.Parent and (model:FindFirstChild("Hitbox") or model.PrimaryPart or model:FindFirstChild("Core"))
+		if core and model:IsDescendantOf(workspace) and not model:GetAttribute("Dead") and not model:GetAttribute("Under") then
+			local size = math.max(core.Size.X, core.Size.Z) * 0.5
+			local d = math.max(0, (core.Position - root.Position).Magnitude - size)
+			if d < bestDistance then best, bestDistance = {Smash = model, Character = model}, d end
+		end
+	end
 	return best
 end
 RunService.RenderStepped:Connect(function()
@@ -114,6 +124,10 @@ RunService.RenderStepped:Connect(function()
 	target = out and closest() or nil
 	highlight.Adornee = target and target.Character or nil
 	highlight.Enabled = target ~= nil
+	-- (v41) things to smash light up gold, people red
+	local thing = target ~= nil and target.Smash ~= nil
+	highlight.FillColor = thing and Color3.fromRGB(255, 210, 60) or Color3.fromRGB(255, 0, 0)
+	highlight.OutlineColor = thing and Color3.fromRGB(255, 255, 200) or Color3.fromRGB(107, 0, 0)
 end)
 
 -- swings (the default Animate script plays its slash for a "toolanim" value)
@@ -136,7 +150,8 @@ local function hookTool(bat)
 			whoosh.PlaybackSpeed = 0.95 + math.random() * 0.15; whoosh.Parent = handle; whoosh:Play()
 			game:GetService("Debris"):AddItem(whoosh, 2)
 		end
-		if target then api:WaitForChild("Bat"):FireServer(target.UserId) end
+		if target and target.Smash then api:WaitForChild("Smash"):FireServer(target.Smash)
+		elseif target then api:WaitForChild("Bat"):FireServer(target.UserId) end
 	end)
 end
 local function watchContainer(container)

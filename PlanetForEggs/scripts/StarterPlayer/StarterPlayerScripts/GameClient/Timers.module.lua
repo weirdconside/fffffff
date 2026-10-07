@@ -19,6 +19,11 @@ local ICONS = {
 	EggStorm = "EggBig",
 	Aurora = "rbxassetid://83627475909869",
 	PumpkinNight = "rbxassetid://127455440418221",
+	TreasureComet = "rbxassetid://74741161145180",
+	CoinRain = "CoinGold",
+	EggTornado = "EggBig",
+	Boss = "Volcano",
+	Golden = "EggBig",
 }
 local FALLBACK_ICON = "rbxassetid://127455440418221"
 
@@ -142,20 +147,40 @@ function Timers.Init(store)
 		else
 			set(meteor, "Meteor Run in " .. clock(runAt - now), C.White)
 		end
-		-- world event
+		-- (v41) the third pill takes turns: the planet boss, the Golden Egg race and the world event - whatever is live
+		-- comes first (several live: they take turns), otherwise the next ones count down in turn
+		local live, soon = {}, {}
+		local bossPlanet = workspace:GetAttribute("PFEBossPlanet")
+		if type(bossPlanet) == "string" and bossPlanet ~= "" then
+			local p = Config.Planets[bossPlanet]
+			table.insert(live, {"BOSS " .. tostring(workspace:GetAttribute("PFEBossName")) .. " on " .. (p and p.Name or bossPlanet) .. " "
+				.. clock((workspace:GetAttribute("PFEBossEndsAt") or now) - now), Color3.fromRGB(255, 110, 90), "Boss"})
+		elseif (workspace:GetAttribute("PFEBossNextAt") or 0) > now then
+			table.insert(soon, {"Planet boss in " .. clock(workspace:GetAttribute("PFEBossNextAt") - now), C.White, "Boss"})
+		end
+		local goldPlanet = workspace:GetAttribute("PFEGoldenPlanet")
+		if type(goldPlanet) == "string" and goldPlanet ~= "" then
+			local p = Config.Planets[goldPlanet]
+			table.insert(live, {"Golden Egg on " .. (p and p.Name or goldPlanet) .. " " .. clock((workspace:GetAttribute("PFEGoldenEndsAt") or now) - now),
+				Color3.fromRGB(255, 214, 60), "Golden"})
+		elseif (workspace:GetAttribute("PFEGoldenNextAt") or 0) > now then
+			table.insert(soon, {"Golden Egg in " .. clock(workspace:GetAttribute("PFEGoldenNextAt") - now), C.White, "Golden"})
+		end
 		local current = workspace:GetAttribute("PFEEvent")
 		local info = Config.Events[current]
 		if info and (workspace:GetAttribute("PFEEventEndsAt") or 0) > now then
-			set(event, info.Name .. " LIVE " .. clock(workspace:GetAttribute("PFEEventEndsAt") - now), info.Color)
-			local icon = ICONS[info.Id]; icon = UI.Icons[icon] or icon or FALLBACK_ICON
-			if event.Icon.Image ~= icon then event.Icon.Image = icon end
+			table.insert(live, {info.Name .. " LIVE " .. clock(workspace:GetAttribute("PFEEventEndsAt") - now), info.Color, info.Id})
 		else
 			local nextInfo = Config.Events[workspace:GetAttribute("PFEEventNext")]
-			if nextInfo then
-				set(event, nextInfo.Name .. " in " .. clock((workspace:GetAttribute("PFEEventNextAt") or now) - now), C.White)
-				local icon = ICONS[nextInfo.Id]; icon = UI.Icons[icon] or icon or FALLBACK_ICON
-				if event.Icon.Image ~= icon then event.Icon.Image = icon end
-			end
+			if nextInfo then table.insert(soon, {nextInfo.Name .. " in " .. clock((workspace:GetAttribute("PFEEventNextAt") or now) - now), C.White, nextInfo.Id}) end
+		end
+		local list = #live > 0 and live or soon
+		local pick = list[math.floor(os.clock() / 4) % math.max(1, #list) + 1]
+		if pick then
+			set(event, pick[1], pick[2])
+			local icon = ICONS[pick[3]]; icon = UI.Icons[icon] or icon or FALLBACK_ICON
+			if event.Icon.Image ~= icon then event.Icon.Image = icon end
+			event.Icon.ImageColor3 = pick[3] == "Golden" and Color3.fromRGB(255, 214, 60) or C.White
 		end
 	end)
 end

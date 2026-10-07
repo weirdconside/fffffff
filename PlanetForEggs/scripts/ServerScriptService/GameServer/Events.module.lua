@@ -184,6 +184,101 @@ local function endPumpkins(state)
 	state.Pumpkins = {}
 end
 
+-- ---------------------------------------------------------------- (v41) the new events (PlanetLife does the work)
+-- the explorers out on a planet's surface, a random one of them, a spot near them
+local function surface(planetId) return ctx.PlanetLife and ctx.PlanetLife.SurfaceExplorers(planetId) or {} end
+local function nearSomebody(planetId, minD, maxD)
+	local list = surface(planetId)
+	if #list == 0 then return nil end
+	local r = ctx.root(list[rng:NextInteger(1, #list)].Player)
+	return r and ctx.PlanetLife.SpotNear(planetId, r.Position, minD, maxD)
+end
+-- Treasure Comet: a comet crashes near every explorer (one per explorer, three a planet at most) and leaves its crystal
+-- heart in a crater: smash it - three eggs and a heap of coins
+function handlers.TreasureComet(elapsed, state)
+	if state.Done or not ctx.PlanetLife then return end
+	state.Done = true
+	for _, planetId in ipairs(ctx.Expeditions.ActivePlanets()) do
+		local explorers = surface(planetId)
+		for i = 1, math.min(3, #explorers) do
+			local r = ctx.root(explorers[i].Player)
+			local at = r and ctx.PlanetLife.SpotNear(planetId, r.Position, 50, 110)
+			if at then
+				ctx.PlanetLife.Strike(planetId, "Comet", at, {Delay = 3, Radius = 16, Damage = 30, Knock = 70}, {Reason = "A comet hit you!", Range = 1200,
+					OnLand = function()
+						ctx.PlanetLife.Breakable(planetId, "CometCore", CFrame.new(at) * CFrame.Angles(0, rng:NextNumber(0, 6), 0), {Life = 150, Zone = 4, Size = 10})
+					end})
+			end
+		end
+	end
+end
+-- Coin Rain: coins drop round every explorer, walk over them to pick them up
+function handlers.CoinRain(elapsed, state)
+	if not ctx.PlanetLife then return end
+	state.Next = state.Next or 0
+	if elapsed < state.Next then return end
+	state.Next = elapsed + 0.8
+	for _, planetId in ipairs(ctx.Expeditions.ActivePlanets()) do
+		local planet = Config.Planets[planetId]
+		local value = math.max(10, math.floor((planet and planet.Reward or 100) * 0.04))
+		for _, p in ipairs(surface(planetId)) do
+			local r = ctx.root(p.Player)
+			local at = r and ctx.PlanetLife.SpotNear(planetId, r.Position, 6, 38)
+			if at then ctx.PlanetLife.Coin(planetId, at, value) end
+		end
+	end
+end
+-- Egg Tornado: a tornado on every planet with explorers wanders after them, flings whoever it catches into the air and
+-- spits an egg out every few seconds
+function handlers.EggTornado(elapsed, state)
+	if not ctx.PlanetLife then return end
+	state.Tornados = state.Tornados or {}
+	for _, planetId in ipairs(ctx.Expeditions.ActivePlanets()) do
+		local tornado = state.Tornados[planetId]
+		if not tornado then
+			local at = nearSomebody(planetId, 60, 110)
+			if at then
+				local record = ctx.PlanetLife.Zone(planetId, {Kind = "Tornado", Radius = 11, Launch = 95, Life = 9999}, at)
+				if record then
+					record.Moving = true
+					state.Tornados[planetId] = {Record = record, Target = at, NextEgg = elapsed + 2}
+				end
+			end
+		else
+			local record = tornado.Record
+			if not record.Model.Parent then state.Tornados[planetId] = nil; continue end
+			-- wander towards a spot near somebody
+			if (record.Position - tornado.Target).Magnitude < 6 then tornado.Target = nearSomebody(planetId, 10, 70) or tornado.Target end
+			local step = (tornado.Target - record.Position) * Vector3.new(1, 0, 1)
+			if step.Magnitude > 0.1 then
+				local move = step.Unit * math.min(step.Magnitude, 9 * 0.25)
+				record.Position += move
+				record.CF = record.CF + move
+				record.Model:PivotTo(record.Model:GetPivot() + move)
+			end
+			if elapsed >= tornado.NextEgg then
+				tornado.NextEgg = elapsed + 3
+				local a = rng:NextNumber(0, math.pi * 2)
+				local spot = record.Position + Vector3.new(math.cos(a) * 16, 0, math.sin(a) * 16)
+				local item = ctx.Expeditions.SpawnEventEgg(planetId, spot, {Zone = 4, Boost = 3, Life = 70})
+				if item then
+					local proxy = item:FindFirstChild("Pickup")
+					ctx.PlanetLife.Tell(planetId, spot, "EventStrike", {Kind = "EggDrop", Position = proxy and proxy.Position - Vector3.new(0, 1.9, 0) or spot, Delay = 0.9,
+						EggId = item:GetAttribute("EggId")}, 500)
+				end
+			end
+		end
+	end
+end
+local enders = {}
+function enders.EggTornado(state)
+	for _, tornado in pairs(state.Tornados or {}) do
+		if ctx.PlanetLife then ctx.PlanetLife.RemoveZone(tornado.Record.Model) end
+	end
+	state.Tornados = {}
+end
+enders.PumpkinNight = endPumpkins
+
 local state = {}
 function Events.Start(id)
 	local event = Config.Events[id]
@@ -191,7 +286,8 @@ function Events.Start(id)
 	current = id
 	endsAt = workspace:GetServerTimeNow() + event.Duration
 	state = {Started = os.clock()}
-	scheduleNext(event.Duration + rng:NextInteger(Config.EventInterval[1], Config.EventInterval[2]))
+	-- (v41) the next one starts EventInterval seconds after this one started (every 5 minutes)
+	scheduleNext(math.max(event.Duration + 30, rng:NextInteger(Config.EventInterval[1], Config.EventInterval[2])))
 	publish()
 	for _, player in ipairs(Players:GetPlayers()) do
 		ctx.remotes.Notice:FireClient(player, event.Name .. "! " .. event.Buff, "Purple")
@@ -209,7 +305,7 @@ function Events.Init(context)
 			task.wait(0.25)
 			local now = workspace:GetServerTimeNow()
 			if current and now >= endsAt then
-				if current == "PumpkinNight" then pcall(endPumpkins, state) end
+				if enders[current] then pcall(enders[current], state) end
 				current = nil
 				clearGlow()
 				publish()

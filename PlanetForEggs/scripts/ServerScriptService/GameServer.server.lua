@@ -27,6 +27,8 @@ local Limited = require(script:WaitForChild("Limited"))
 local Rewards = require(script:WaitForChild("Rewards"))
 local Speed = require(script:WaitForChild("Speed"))
 local Bots = require(script:WaitForChild("Bots"))
+local PlanetLife = require(script:WaitForChild("PlanetLife"))   -- (v41) weather, breakables, bosses, the Golden Egg
+local Caves = require(script:WaitForChild("Caves"))             -- (v41) the caves under every planet
 local PetModels = require(network:WaitForChild("PetModels"))
 local SkyPaths = require(network:WaitForChild("SkyPaths"))
 
@@ -54,7 +56,7 @@ local ctx = {
 		OpenMenu = remote("OpenMenu"), Sprint = remote("Sprint"), EggHatched = remote("EggHatched"),
 		Effect = remote("Effect"), PlanetLayout = remote("PlanetLayout", "RemoteFunction"), PlanetChunks = remote("PlanetChunks", "RemoteFunction"),
 		Jet = remote("Jet"), Bat = remote("Bat"), Minigame = remote("Minigame"), MinigameGrab = remote("MinigameGrab"), MinigameJoin = remote("MinigameJoin"),
-		Raygun = remote("Raygun"),
+		Raygun = remote("Raygun"), Smash = remote("Smash"),
 	},
 }
 local profiles = ctx.profiles
@@ -161,6 +163,8 @@ function ctx.setMovement(profile)
 	elseif profile.Sprinting and not profile.Busy then
 		speed = Config.SprintSpeed(speed)
 	end
+	-- (v41) the weather (a blizzard, a heatwave) slows you down away from shelter (PlanetLife)
+	if not profile.Stolen then speed *= profile.WeatherSpeed or 1 end
 	humanoid.WalkSpeed = speed
 	humanoid.UseJumpPower = true
 	humanoid.JumpPower = profile.AdminJump or (Shop.Has(profile, "SpeedBoots") and 58 or 48)
@@ -429,6 +433,8 @@ ctx.Shop = ctx.Shop or Shop
 Rewards.Init(ctx)
 Speed.Init(ctx)
 Bots.Init(ctx)
+PlanetLife.Init(ctx)
+Caves.Init(ctx)
 ctx.Fusion = Fusion
 ctx.Limited = Limited
 
@@ -438,6 +444,9 @@ function ctx.ResetMaps()
 	publishMapCycle()
 	local ok, err = pcall(Expeditions.ResetPools)
 	if not ok then warn("[PFE] map reset failed", err) end
+	-- (v41) the caves' eggs went with the planets' eggs: the chambers get new ones
+	ok, err = pcall(Caves.OnMapReset)
+	if not ok then warn("[PFE] cave reset failed", err) end
 end
 -- layouts generate a slice at a time (never one long stall), and the next cycle's planets are
 -- prepared in the background shortly before the reset, so the reset itself costs nothing
@@ -610,6 +619,7 @@ local function characterAdded(profile, character)
 	local characterRoot = character:WaitForChild("HumanoidRootPart", 10)
 	if not characterRoot or profiles[profile.Player] ~= profile then return end
 	Dungeons.OnLeft(profile)
+	Caves.OnLeft(profile)
 	Expeditions.OnCharacterReset(profile)
 	Bases.OnCharacterReset(profile)
 	characterRoot.Anchored = false
@@ -620,6 +630,7 @@ local function characterAdded(profile, character)
 			if profiles[profile.Player] ~= profile then return end
 			Minigame.Leave(profile, "died")
 			Dungeons.OnLeft(profile)
+			Caves.OnLeft(profile)
 			Expeditions.OnDied(profile)
 			Bases.OnDied(profile)
 			ctx.sendState(profile)
@@ -691,6 +702,8 @@ Players.PlayerRemoving:Connect(function(player)
 	if not profile then return end
 	Bases.OnPlayerLeaving(profile)   -- returns eggs in transit before saving
 	pcall(Dungeons.OnLeft, profile)
+	pcall(Caves.OnLeft, profile)
+	pcall(PlanetLife.OnLeft, profile)
 	Expeditions.OnPlayerLeaving(profile)
 	profiles[player] = nil
 	profile.FlightToken += 1

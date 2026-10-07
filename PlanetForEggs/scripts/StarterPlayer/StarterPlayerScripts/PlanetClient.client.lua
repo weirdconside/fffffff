@@ -353,6 +353,9 @@ local presets = {
 	-- pale green grade, no haze, the stars outside the windows
 	Ship = {Clock = 14.5, Bright = 2.2, Amb = rgb(165, 172, 168), Out = rgb(172, 184, 178), Den = 0, Off = 0, Col = rgb(170, 170, 170), Dec = rgb(106, 112, 125), Glare = 0, Haze = 0, Bloom = 0.35, Thresh = 1.1, Tint = rgb(218, 255, 214), Sat = 0.05, Skybox = "Space"},
 	Void = {Clock = 0.1, Bright = 1.5, Amb = rgb(115, 105, 165), Out = rgb(135, 125, 195), Den = 0.36, Off = 0.05, Col = rgb(70, 40, 140), Dec = rgb(20, 10, 40), Glare = 0, Haze = 0.3, Bloom = 0.8, Thresh = 0.85, Tint = rgb(240, 235, 255), Sat = 0.1, Skybox = "Space"},
+	-- (v41) down in a cave: night, almost no ambient light, a dark haze - the flashlight, the glowing crystals and the vents
+	-- are what you see by
+	Cave = {Clock = 0, Bright = 0, Amb = rgb(26, 26, 34), Out = rgb(20, 20, 28), Den = 0.62, Off = 0, Col = rgb(8, 8, 14), Dec = rgb(4, 4, 8), Glare = 0, Haze = 0, Bloom = 0.7, Thresh = 0.9, Tint = rgb(235, 235, 255), Sat = 0.05, Skybox = "Space"},
 }
 -- the Milky Way skybox used in space and on airless worlds (public Creator Store set)
 local SPACE_SKY = {Ft = 133001552999736, Bk = 132336371397963, Lf = 135011051064571, Rt = 89726705086909, Up = 102995181898486, Dn = 109149593532057}
@@ -476,7 +479,12 @@ local function updateRegion()
 	local character = watched and watched.Character or player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
 	local name
-	if planet and rootPart and not state.Busy then
+	local cave = player:GetAttribute("PFECave")
+	if type(cave) == "string" and cave ~= "" and not watched then
+		-- (v41) in a cave: its name and how deep you are
+		local depth = player:GetAttribute("PFECaveDepth") or 0
+		name = depth > 0 and (cave .. "  -  depth " .. depth .. "/" .. (player:GetAttribute("PFECaveMax") or 16)) or cave
+	elseif planet and rootPart and not state.Busy then
 		local rel = rootPart.Position - planet.Origin
 		for _, region in ipairs(regions) do
 			if (Vector2.new(rel.X - region.X, rel.Z - region.Z)).Magnitude <= (region.Radius or 100) * 1.05 then name = region.Name; break end
@@ -540,6 +548,9 @@ local function planetBound()
 	if sites then table.insert(list, sites) end
 	local aliens = workspace:FindFirstChild("PFE_Aliens")
 	if aliens then table.insert(list, aliens) end
+	-- (v41) the weather's things, the bosses, the cave mouths: one folder per planet
+	local life = workspace:FindFirstChild("PFE_PlanetLife")
+	if life then table.insert(list, life) end
 	return list
 end
 local visibleWorld = "Base"
@@ -571,6 +582,8 @@ task.spawn(function()
 	if sites then table.insert(watched, sites) end
 	local aliens = workspace:WaitForChild("PFE_Aliens", 60)
 	if aliens then table.insert(watched, aliens) end
+	local life = workspace:WaitForChild("PFE_PlanetLife", 60)
+	if life then table.insert(watched, life) end
 	for _, folder in ipairs(watched) do
 		local function place(item)
 			local owner = item:GetAttribute("Planet")
@@ -610,10 +623,17 @@ end
 -- aboard an alien ship: the ship's light, normal gravity, no planet weather; the planet's again after
 local function refreshShip()
 	local ship = player:GetAttribute("PFEDungeon")
+	local cave = player:GetAttribute("PFECave")
 	local planet = Config.Planets[worldNow]
 	if type(ship) == "string" and ship ~= "" then
 		applyPreset("Ship")
 		setAmbient(nil)
+		workspace.Gravity = Config.BaseGravity
+	elseif type(cave) == "string" and cave ~= "" and planet then
+		-- (v41) in a cave: dark, no planet weather, ordinary gravity (the jumps down there are made for it)
+		applyPreset("Cave")
+		setAmbient(nil)
+		setSky(nil)
 		workspace.Gravity = Config.BaseGravity
 	elseif planet then
 		applyPreset(planet.Sky)
@@ -622,6 +642,11 @@ local function refreshShip()
 	end
 end
 player:GetAttributeChangedSignal("PFEDungeon"):Connect(refreshShip)
+player:GetAttributeChangedSignal("PFECave"):Connect(function()
+	refreshShip()
+	-- (back out of a cave: the planet's sky bodies again)
+	if not player:GetAttribute("PFECave") and Config.Planets[worldNow] then setSky(worldNow) end
+end)
 
 -- ---------------------------------------------------------------- rocket upgrade visuals
 local function refreshRocket(rocket, level)
